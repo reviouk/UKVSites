@@ -29,7 +29,8 @@
   .mono{font-family:"JetBrains Mono",monospace}
 
   /* ---- Ticker bar ---- */
-  .ticker{background:#070a10;border-bottom:1px solid var(--line);overflow:hidden;white-space:nowrap;text-align:center}
+  .ticker{background:#070a10;border:1px solid var(--line);border-radius:10px;overflow:hidden;
+    white-space:nowrap;text-align:center;max-width:1064px;width:calc(100% - 56px);margin:14px auto 0}
   .ticker .track{display:inline-block;padding:9px 0;animation:scroll 32s linear infinite;
     font-family:"JetBrains Mono",monospace;font-size:.78rem;color:var(--muted)}
   .ticker .up{color:var(--green)}
