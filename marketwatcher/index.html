@@ -121,9 +121,10 @@
   .callbox .txt{flex:1}
   .callbox b{display:block}.callbox span{color:var(--muted);font-size:.92rem}
 
-  form{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:30px}
-  form .fhd{font-family:"JetBrains Mono",monospace;font-size:.78rem;color:var(--green);
+  form,.hsbox{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:30px}
+  form .fhd,.hsbox .fhd{font-family:"JetBrains Mono",monospace;font-size:.78rem;color:var(--green);
     letter-spacing:.05em;margin-bottom:20px}
+  .hsbox .hs-form-frame{min-height:280px}
   .field{margin-bottom:16px}
   .field label{display:block;font-size:.82rem;color:var(--muted);margin-bottom:7px}
   .field input,.field textarea{width:100%;background:#0c111b;border:1px solid var(--line);border-radius:10px;
@@ -246,31 +247,13 @@
       </div>
     </div>
 
-    <!-- Replace action with your Formspree endpoint (https://formspree.io/f/XXXX) or handler -->
-    <form action="https://formspree.io/f/YOUR_FORM_ID" method="POST">
+    <!-- HubSpot form — portal 4633795 -->
+    <div class="hsbox">
       <div class="fhd">// request the briefing</div>
-      <input type="hidden" name="_subject" value="New cask enquiry — marketwatcher.co.uk" />
-      <input type="hidden" name="source" value="marketwatcher.co.uk" />
-      <input type="hidden" name="_next" value="thanks.html" />
-      <div class="field">
-        <label for="name">Full name</label>
-        <input id="name" name="name" type="text" required autocomplete="name" />
-      </div>
-      <div class="field">
-        <label for="email">Email address</label>
-        <input id="email" name="email" type="email" required autocomplete="email" />
-      </div>
-      <div class="field">
-        <label for="phone">Phone (optional)</label>
-        <input id="phone" name="phone" type="tel" autocomplete="tel" />
-      </div>
-      <div class="field">
-        <label for="message">Anything you'd like to know? (optional)</label>
-        <textarea id="message" name="message" rows="3"></textarea>
-      </div>
-      <p class="consent">By submitting, you agree to be contacted about whisky cask ownership. We never share your details. Capital is at risk.</p>
-      <button class="btn btn-primary" type="submit">Send me the briefing</button>
-    </form>
+      <script src="https://js.hsforms.net/forms/embed/4633795.js" defer></script>
+      <div class="hs-form-frame" data-region="na1" data-form-id="56d23f9f-8802-4942-b73b-0aad3958e392" data-portal-id="4633795"></div>
+      <p class="consent" style="margin-top:16px">By submitting, you agree to be contacted about whisky cask ownership. We never share your details. Capital is at risk.</p>
+    </div>
   </div>
 </section>
 
