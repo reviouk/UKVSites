@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Invest Chronicle — Scotch Whisky Cask Ownership</title>
+<meta name="description" content="The U.S. has lifted its tariff on Scotch whisky, reopening its largest export market. Own a tangible, HMRC-bonded asset that matures while demand returns." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Spectral:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --ink:#16202e;
+    --ink-soft:#3a4656;
+    --cream:#f7f3ea;
+    --paper:#fffdf8;
+    --rule:#cbb89a;
+    --oxblood:#7a2230;
+    --gold:#9c7c3a;
+    --line:#221a12;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:"Spectral",Georgia,serif;
+    color:var(--ink);
+    background:var(--cream);
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 28px}
+  .serif{font-family:"Fraunces",Georgia,serif}
+
+  /* ---------- Masthead ---------- */
+  .masthead{background:var(--paper);border-bottom:3px double var(--line)}
+  .masthead-top{display:flex;justify-content:space-between;align-items:center;
+    font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);
+    padding:10px 0;border-bottom:1px solid var(--rule)}
+  .nameplate{text-align:center;padding:22px 0 14px}
+  .nameplate h1{font-family:"Fraunces",serif;font-weight:600;font-size:clamp(2.4rem,7vw,4.6rem);
+    letter-spacing:.01em;line-height:1}
+  .nameplate .kicker{font-size:.74rem;letter-spacing:.34em;text-transform:uppercase;
+    color:var(--oxblood);margin-bottom:10px}
+  .nameplate .dateline{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;
+    font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft);
+    margin-top:12px;padding-top:12px;border-top:1px solid var(--rule)}
+
+  /* ---------- Hero story ---------- */
+  .lead{padding:48px 0 16px}
+  .lead .label{font-size:.7rem;letter-spacing:.28em;text-transform:uppercase;color:var(--oxblood);
+    font-weight:600;margin-bottom:14px}
+  .lead h2{font-family:"Fraunces",serif;font-weight:500;font-size:clamp(2rem,5.4vw,3.5rem);
+    line-height:1.08;letter-spacing:-.01em;max-width:18ch}
+  .standfirst{font-size:clamp(1.1rem,2.2vw,1.4rem);color:var(--ink-soft);font-style:italic;
+    max-width:46ch;margin-top:18px}
+  .byline{margin-top:18px;font-size:.74rem;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--ink-soft);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);
+    padding:10px 0;display:inline-block}
+
+  /* ---------- Columns ---------- */
+  .article{padding:36px 0 8px;display:grid;grid-template-columns:1.6fr 1fr;gap:48px}
+  .article-main p{margin-bottom:18px;font-size:1.08rem}
+  .article-main p:first-of-type::first-letter{
+    font-family:"Fraunces",serif;float:left;font-size:3.4rem;line-height:.8;
+    padding:6px 10px 0 0;color:var(--oxblood)}
+  .pullquote{font-family:"Fraunces",serif;font-size:1.5rem;line-height:1.3;color:var(--ink);
+    border-left:3px solid var(--oxblood);padding:6px 0 6px 22px;margin:26px 0;font-weight:400}
+  aside.sidebar{border-top:3px double var(--line);padding-top:18px}
+  aside.sidebar h3{font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;color:var(--oxblood);
+    margin-bottom:16px}
+  .fact{padding:14px 0;border-bottom:1px solid var(--rule)}
+  .fact b{font-family:"Fraunces",serif;display:block;font-size:1.15rem;font-weight:600}
+  .fact span{font-size:.92rem;color:var(--ink-soft)}
+
+  /* ---------- How it works ---------- */
+  .steps{background:var(--paper);border-top:3px double var(--line);border-bottom:3px double var(--line);
+    margin-top:40px;padding:46px 0}
+  .steps h3{font-family:"Fraunces",serif;font-size:1.9rem;text-align:center;margin-bottom:6px;font-weight:500}
+  .steps .sub{text-align:center;color:var(--ink-soft);font-style:italic;margin-bottom:34px}
+  .step-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:30px}
+  .step{border-top:2px solid var(--line);padding-top:16px}
+  .step .num{font-family:"Fraunces",serif;font-size:1rem;color:var(--oxblood);letter-spacing:.1em}
+  .step h4{font-family:"Fraunces",serif;font-size:1.25rem;font-weight:600;margin:8px 0 8px}
+  .step p{font-size:.98rem;color:var(--ink-soft)}
+
+  /* ---------- CTA / form ---------- */
+  .enquire{padding:54px 0}
+  .enquire-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start}
+  .enquire h3{font-family:"Fraunces",serif;font-size:clamp(1.8rem,4vw,2.6rem);font-weight:500;line-height:1.1}
+  .enquire p{color:var(--ink-soft);margin-top:14px;font-size:1.05rem;max-width:42ch}
+  .callbox{margin-top:24px;background:var(--paper);border:1px solid var(--rule);padding:20px 22px}
+  .callbox b{font-family:"Fraunces",serif}
+  .btn{display:inline-block;background:var(--oxblood);color:#fff;text-decoration:none;
+    font-family:"Fraunces",serif;font-size:1rem;letter-spacing:.02em;padding:13px 26px;
+    border:none;cursor:pointer;transition:background .2s}
+  .btn:hover{background:#5e1925}
+  .btn-ghost{background:transparent;color:var(--oxblood);border:1.5px solid var(--oxblood)}
+  .btn-ghost:hover{background:var(--oxblood);color:#fff}
+
+  form{background:var(--paper);border:1px solid var(--rule);padding:30px}
+  form .label{font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;color:var(--oxblood);
+    font-weight:600;margin-bottom:18px}
+  .field{margin-bottom:16px}
+  .field label{display:block;font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--ink-soft);margin-bottom:6px}
+  .field input,.field textarea{width:100%;border:1px solid var(--rule);background:#fff;
+    padding:11px 13px;font-family:inherit;font-size:1rem;color:var(--ink)}
+  .field input:focus,.field textarea:focus{outline:none;border-color:var(--oxblood)}
+  .consent{font-size:.8rem;color:var(--ink-soft);margin:6px 0 18px;line-height:1.5}
+  form .btn{width:100%}
+
+  /* ---------- Footer / disclaimer ---------- */
+  footer{background:var(--ink);color:#cdd3dc;padding:40px 0 30px;font-size:.86rem}
+  footer .fwrap{display:grid;grid-template-columns:1.5fr 1fr;gap:30px}
+  footer h5{font-family:"Fraunces",serif;color:#fff;font-size:1.1rem;margin-bottom:10px}
+  .disclaimer{border-top:1px solid #2c3848;margin-top:26px;padding-top:18px;font-size:.78rem;
+    color:#8b95a3;line-height:1.6}
+
+  @media(max-width:860px){
+    .article,.enquire-grid,.step-grid,footer .fwrap{grid-template-columns:1fr;gap:30px}
+    aside.sidebar{border-top:1px solid var(--rule)}
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== Masthead ===== -->
+<header class="masthead">
+  <div class="wrap">
+    <div class="masthead-top">
+      <span>Alternative Assets</span>
+      <span>Established MMXXVI</span>
+      <span>Cask &amp; Spirit Markets</span>
+    </div>
+    <div class="nameplate">
+      <div class="kicker">Markets &middot; Tangible Assets</div>
+      <h1>The Invest Chronicle</h1>
+      <div class="dateline">
+        <span>Scotch Whisky Edition</span>
+        <span>&bull;</span>
+        <span>Cask Ownership Briefing</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ===== Lead story ===== -->
+<section class="lead">
+  <div class="wrap">
+    <div class="label">The Story</div>
+    <h2 class="serif">The U.S. Has Reopened Its Largest Market for Scotch</h2>
+    <p class="standfirst">With the American tariff on Scotch whisky lifted, demand is set to return to the sector's most valuable export market — and the casks maturing today stand directly in its path.</p>
+    <div class="byline">A briefing for private investors</div>
+  </div>
+</section>
+
+<!-- ===== Article ===== -->
+<section class="article wrap">
+  <div class="article-main">
+    <p>For years the United States — the single largest export market for Scotch whisky — sat behind a tariff that quietly held demand back. That barrier has now been removed, restoring tariff-free access to American buyers and the distributors who serve them.</p>
+    <p>The mechanism is straightforward. As the most valuable destination for bottled Scotch reopens, demand flows back through the supply chain — and rising demand for bottled whisky traces directly to the casks maturing in bonded warehouses today.</p>
+    <div class="pullquote">Step in ahead of the curve and you hold a tangible, HMRC-bonded asset that matures quietly in a warehouse — uncoupled from daily market noise.</div>
+    <p>Cask ownership is not a paper position. You take full legal title to a specific cask of maturing spirit from an established distillery, held in a government-bonded warehouse, insured and accounted for. It is a real asset with a clear paper trail — and a defined route to exit when the time is right.</p>
+    <p>There is no screen to watch and no daily volatility to stomach. The spirit matures on its own schedule while you decide, in your own time, when and how to sell.</p>
+  </div>
+
+  <aside class="sidebar">
+    <h3>At a Glance</h3>
+    <div class="fact"><b>Full legal ownership</b><span>Title to a specific, identified cask — not a fund or a share.</span></div>
+    <div class="fact"><b>HMRC-bonded storage</b><span>Held in a government-bonded warehouse, insured and tracked.</span></div>
+    <div class="fact"><b>A tangible asset</b><span>Real spirit from an established distillery, maturing over time.</span></div>
+    <div class="fact"><b>A clear exit route</b><span>Defined options to sell when you choose to realise the asset.</span></div>
+  </aside>
+</section>
+
+<!-- ===== How it works ===== -->
+<section class="steps">
+  <div class="wrap">
+    <h3>How Cask Ownership Works</h3>
+    <p class="sub">Three steps, fully managed from selection to sale</p>
+    <div class="step-grid">
+      <div class="step"><div class="num">No. I</div><h4>Select</h4><p>We help you choose a cask from an established distillery to match your horizon and budget, with full legal title transferred to your name.</p></div>
+      <div class="step"><div class="num">No. II</div><h4>Store &amp; Mature</h4><p>Your cask sits in an HMRC-bonded warehouse — insured, accounted for, and left to mature with nothing for you to manage day to day.</p></div>
+      <div class="step"><div class="num">No. III</div><h4>Exit</h4><p>When you're ready, we help you realise the asset through the appropriate channel, with a clear, documented process throughout.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Enquire ===== -->
+<section class="enquire" id="enquire">
+  <div class="wrap enquire-grid">
+    <div>
+      <h3 class="serif">Request the investor briefing</h3>
+      <p>Leave your details and we'll send our guide to Scotch whisky cask ownership — what's currently available, how ownership and storage work, and what the reopening of the U.S. market could mean for casks maturing now.</p>
+      <div class="callbox">
+        <b>Prefer to talk it through?</b>
+        <p style="margin:8px 0 16px">Book a free, no-obligation 15-minute call at a time that suits you.</p>
+        <!-- Replace the href with your Calendly / booking link -->
+        <a class="btn btn-ghost" href="https://calendly.com/YOUR-LINK" target="_blank" rel="noopener">Book a 15-minute call</a>
+      </div>
+    </div>
+
+    <!-- Replace action with your Formspree endpoint (https://formspree.io/f/XXXX) or handler -->
+    <form action="https://formspree.io/f/YOUR_FORM_ID" method="POST">
+      <div class="label">Request the briefing</div>
+      <input type="hidden" name="_subject" value="New cask enquiry — investchronicles.com" />
+      <input type="hidden" name="source" value="investchronicles.com" />
+      <input type="hidden" name="_next" value="thanks.html" />
+      <div class="field">
+        <label for="name">Full name</label>
+        <input id="name" name="name" type="text" required autocomplete="name" />
+      </div>
+      <div class="field">
+        <label for="email">Email address</label>
+        <input id="email" name="email" type="email" required autocomplete="email" />
+      </div>
+      <div class="field">
+        <label for="phone">Phone (optional)</label>
+        <input id="phone" name="phone" type="tel" autocomplete="tel" />
+      </div>
+      <div class="field">
+        <label for="message">Anything you'd like to know? (optional)</label>
+        <textarea id="message" name="message" rows="3"></textarea>
+      </div>
+      <p class="consent">By submitting, you agree to be contacted about whisky cask ownership. We never share your details. Capital is at risk.</p>
+      <button class="btn" type="submit">Send me the briefing</button>
+    </form>
+  </div>
+</section>
+
+<!-- ===== Footer ===== -->
+<footer>
+  <div class="wrap fwrap">
+    <div>
+      <h5>The Invest Chronicle</h5>
+      <p>A briefing service on tangible, alternative assets for private investors. Scotch whisky cask ownership — selection, bonded storage and exit, fully managed.</p>
+    </div>
+    <div>
+      <h5>Contact</h5>
+      <p>Email: hello@investchronicles.com<br/>By appointment only.</p>
+    </div>
+  </div>
+  <div class="wrap">
+    <p class="disclaimer">
+      <strong>Risk warning.</strong> Investment in whisky casks is an unregulated activity and is not covered by the Financial Conduct Authority or the Financial Services Compensation Scheme. The value of casks can fall as well as rise and you may get back less than you invest. Past performance and market conditions are not a reliable indicator of future results. Returns are not guaranteed. This page is marketing material and does not constitute financial, tax or investment advice; please seek independent advice before proceeding. &copy; The Invest Chronicle. All rights reserved.
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>
