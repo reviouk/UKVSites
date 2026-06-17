@@ -96,9 +96,9 @@
   .split-media img{width:100%;height:100%;object-fit:cover;display:block}
 
   /* full-width cask banner */
+  .band-wrap{margin:0 auto 64px}
   .feature-band{position:relative;border:1px solid var(--line);border-radius:16px;
-    height:360px;overflow:hidden;background:#0c111b;
-    max-width:1064px;width:calc(100% - 56px);margin:0 auto 64px}
+    height:360px;overflow:hidden;background:#0c111b;width:100%}
   .feature-band img{width:100%;height:100%;object-fit:cover;display:block;opacity:.85}
   .feature-band .cap{position:absolute;left:28px;bottom:28px;max-width:460px;
     background:rgba(18,24,38,.92);border:1px solid var(--line);border-radius:14px;
@@ -164,7 +164,8 @@
   form .btn-primary{width:100%}
 
   /* ---- Footer ---- */
-  footer{padding:80px 0 34px;font-size:.9rem;color:var(--muted)}
+  footer{font-size:.9rem;color:var(--muted)}
+  footer.wrap{padding:80px 28px 40px}
   footer .fwrap{display:grid;grid-template-columns:1.6fr 1fr;gap:30px;margin-bottom:8px}
   footer h5{color:var(--text);font-size:1.05rem;margin-bottom:10px;font-weight:700}
   .disclaimer{border-top:1px solid var(--line);margin-top:24px;padding-top:18px;font-size:.78rem;
@@ -330,11 +331,13 @@
 </section>
 
 <!-- ===== Cask banner ===== -->
-<div class="feature-band">
-  <img src="images/cask-warehouse.jpg" alt="Casks maturing in a bonded warehouse" loading="lazy" />
-  <div class="cap">
-    <div class="eyebrow">// a real asset, quietly maturing</div>
-    <p>Your cask rests in a bonded warehouse while the market moves in its favour.</p>
+<div class="wrap band-wrap">
+  <div class="feature-band">
+    <img src="images/cask-warehouse.jpg" alt="Casks maturing in a bonded warehouse" loading="lazy" />
+    <div class="cap">
+      <div class="eyebrow">// a real asset, quietly maturing</div>
+      <p>Your cask rests in a bonded warehouse while the market moves in its favour.</p>
+    </div>
   </div>
 </div>
 
