@@ -1,0 +1,14 @@
+# Treat images and other binaries as binary (never line-ending convert)
+*.jpg   binary
+*.jpeg  binary
+*.png   binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.pdf   binary
+
+# Normalise text files to LF in the repo
+*.html  text eol=lf
+*.css   text eol=lf
+*.js    text eol=lf
+*.md    text eol=lf
