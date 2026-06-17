@@ -29,7 +29,7 @@
   .mono{font-family:"JetBrains Mono",monospace}
 
   /* ---- Ticker bar ---- */
-  .ticker{background:#070a10;border-bottom:1px solid var(--line);overflow:hidden;white-space:nowrap}
+  .ticker{background:#070a10;border-bottom:1px solid var(--line);overflow:hidden;white-space:nowrap;text-align:center}
   .ticker .track{display:inline-block;padding:9px 0;animation:scroll 32s linear infinite;
     font-family:"JetBrains Mono",monospace;font-size:.78rem;color:var(--muted)}
   .ticker .up{color:var(--green)}
@@ -89,6 +89,17 @@
   .split-media{border:1px solid var(--line);border-radius:16px;overflow:hidden;line-height:0;
     background:#0c111b;box-shadow:0 30px 60px -34px rgba(0,0,0,.6)}
   .split-media svg{width:100%;height:auto;display:block}
+  .split-media img{width:100%;height:100%;min-height:340px;object-fit:cover;display:block}
+
+  /* full-width cask banner */
+  .feature-band{position:relative;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+    height:360px;overflow:hidden;background:#0c111b}
+  .feature-band img{width:100%;height:100%;object-fit:cover;display:block;opacity:.85}
+  .feature-band .cap{position:absolute;inset:auto 0 0 0;padding:26px 28px;
+    background:linear-gradient(to top,rgba(7,10,16,.92),rgba(7,10,16,0));}
+  .feature-band .cap .eyebrow{margin-bottom:6px}
+  .feature-band .cap p{color:var(--text);font-size:clamp(1.1rem,2.4vw,1.5rem);font-weight:600;
+    max-width:36ch;letter-spacing:-.01em}
 
   /* ---- Stats strip ---- */
   .strip{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--panel-2)}
@@ -147,7 +158,7 @@
   form .btn-primary{width:100%}
 
   /* ---- Footer ---- */
-  footer{padding:46px 0 34px;font-size:.9rem;color:var(--muted)}
+  footer{padding:80px 0 34px;font-size:.9rem;color:var(--muted)}
   footer .fwrap{display:grid;grid-template-columns:1.6fr 1fr;gap:30px;margin-bottom:8px}
   footer h5{color:var(--text);font-size:1.05rem;margin-bottom:10px;font-weight:700}
   .disclaimer{border-top:1px solid var(--line);margin-top:24px;padding-top:18px;font-size:.78rem;
@@ -282,42 +293,7 @@
 <section class="block wrap">
   <div class="split">
     <div class="split-media">
-      <svg viewBox="0 0 520 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Casks maturing in a bonded warehouse">
-        <defs>
-          <radialGradient id="mwWh" cx="50%" cy="42%" r="62%">
-            <stop offset="0" stop-color="#23c08a" stop-opacity="0.18"/>
-            <stop offset="1" stop-color="#23c08a" stop-opacity="0"/>
-          </radialGradient>
-          <linearGradient id="mwHead" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="#f0c45a"/><stop offset="1" stop-color="#a9761b"/>
-          </linearGradient>
-        </defs>
-        <rect width="520" height="360" fill="#0c111b"/>
-        <circle cx="260" cy="150" r="200" fill="url(#mwWh)"/>
-        <g stroke="#223047" stroke-width="1">
-          <line x1="0" y1="300" x2="520" y2="300"/>
-          <line x1="60" y1="300" x2="110" y2="340"/><line x1="260" y1="300" x2="260" y2="340"/><line x1="460" y1="300" x2="410" y2="340"/>
-        </g>
-        <!-- stacked cask ends: bottom 4, middle 3, top 2 -->
-        <g>
-          <!-- group renders each cask end -->
-          <g transform="translate(110,250)" class="ce"></g>
-        </g>
-        <g fill="none" stroke-linecap="round">
-          <!-- bottom row -->
-          <g transform="translate(110,250)"><circle r="40" fill="#141d2c" stroke="#3a4a63" stroke-width="2"/><circle r="30" stroke="#2c3a52" stroke-width="1.5"/><circle r="5" fill="url(#mwHead)" stroke="none"/><line x1="-12" y1="-27" x2="-12" y2="27" stroke="#2c3a52"/><line x1="12" y1="-27" x2="12" y2="27" stroke="#2c3a52"/></g>
-          <g transform="translate(196,250)"><circle r="40" fill="#15202f" stroke="#3a4a63" stroke-width="2"/><circle r="30" stroke="#2c3a52" stroke-width="1.5"/><circle r="5" fill="url(#mwHead)" stroke="none"/><line x1="-12" y1="-27" x2="-12" y2="27" stroke="#2c3a52"/><line x1="12" y1="-27" x2="12" y2="27" stroke="#2c3a52"/></g>
-          <g transform="translate(282,250)"><circle r="40" fill="#141d2c" stroke="#3a4a63" stroke-width="2"/><circle r="30" stroke="#2c3a52" stroke-width="1.5"/><circle r="5" fill="url(#mwHead)" stroke="none"/><line x1="-12" y1="-27" x2="-12" y2="27" stroke="#2c3a52"/><line x1="12" y1="-27" x2="12" y2="27" stroke="#2c3a52"/></g>
-          <g transform="translate(368,250)"><circle r="40" fill="#15202f" stroke="#3a4a63" stroke-width="2"/><circle r="30" stroke="#2c3a52" stroke-width="1.5"/><circle r="5" fill="url(#mwHead)" stroke="none"/><line x1="-12" y1="-27" x2="-12" y2="27" stroke="#2c3a52"/><line x1="12" y1="-27" x2="12" y2="27" stroke="#2c3a52"/></g>
-          <!-- middle row, amber-lit -->
-          <g transform="translate(153,176)"><circle r="40" fill="#1b1606" stroke="#7a5a18" stroke-width="2"/><circle r="30" stroke="#9c7c3a" stroke-width="1.5"/><circle r="6" fill="url(#mwHead)" stroke="none"/><line x1="-12" y1="-27" x2="-12" y2="27" stroke="#7a5a18"/><line x1="12" y1="-27" x2="12" y2="27" stroke="#7a5a18"/></g>
-          <g transform="translate(239,176)"><circle r="40" fill="#141d2c" stroke="#3a4a63" stroke-width="2"/><circle r="30" stroke="#2c3a52" stroke-width="1.5"/><circle r="5" fill="url(#mwHead)" stroke="none"/><line x1="-12" y1="-27" x2="-12" y2="27" stroke="#2c3a52"/><line x1="12" y1="-27" x2="12" y2="27" stroke="#2c3a52"/></g>
-          <g transform="translate(325,176)"><circle r="40" fill="#1b1606" stroke="#7a5a18" stroke-width="2"/><circle r="30" stroke="#9c7c3a" stroke-width="1.5"/><circle r="6" fill="url(#mwHead)" stroke="none"/><line x1="-12" y1="-27" x2="-12" y2="27" stroke="#7a5a18"/><line x1="12" y1="-27" x2="12" y2="27" stroke="#7a5a18"/></g>
-          <!-- top row -->
-          <g transform="translate(196,102)"><circle r="40" fill="#141d2c" stroke="#3a4a63" stroke-width="2"/><circle r="30" stroke="#2c3a52" stroke-width="1.5"/><circle r="5" fill="url(#mwHead)" stroke="none"/><line x1="-12" y1="-27" x2="-12" y2="27" stroke="#2c3a52"/><line x1="12" y1="-27" x2="12" y2="27" stroke="#2c3a52"/></g>
-          <g transform="translate(282,102)"><circle r="40" fill="#1b1606" stroke="#7a5a18" stroke-width="2"/><circle r="30" stroke="#9c7c3a" stroke-width="1.5"/><circle r="6" fill="url(#mwHead)" stroke="none"/><line x1="-12" y1="-27" x2="-12" y2="27" stroke="#7a5a18"/><line x1="12" y1="-27" x2="12" y2="27" stroke="#7a5a18"/></g>
-        </g>
-      </svg>
+      <img src="images/whisky-casks.jpg" alt="Scotch whisky casks stacked at a Scottish cooperage" loading="lazy" />
     </div>
     <div class="split-text">
       <div class="eyebrow">// the opportunity</div>
@@ -344,6 +320,15 @@
     <div class="stepc"><h4>Exit</h4><p>When the time is right, we guide the sale through the appropriate route, with a documented process throughout.</p></div>
   </div>
 </section>
+
+<!-- ===== Cask banner ===== -->
+<div class="feature-band">
+  <img src="images/cask-warehouse.jpg" alt="Casks maturing in a bonded warehouse" loading="lazy" />
+  <div class="cap">
+    <div class="eyebrow">// a real asset, quietly maturing</div>
+    <p>Your cask rests in a bonded warehouse while the market moves in its favour.</p>
+  </div>
+</div>
 
 <!-- ===== Enquire ===== -->
 <section class="enquire" id="enquire">
