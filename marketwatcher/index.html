@@ -95,8 +95,9 @@
   .feature-band{position:relative;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
     height:360px;overflow:hidden;background:#0c111b}
   .feature-band img{width:100%;height:100%;object-fit:cover;display:block;opacity:.85}
-  .feature-band .cap{position:absolute;inset:auto 0 0 0;padding:26px 28px;
-    background:linear-gradient(to top,rgba(7,10,16,.92),rgba(7,10,16,0));}
+  .feature-band .cap{position:absolute;left:28px;bottom:28px;max-width:460px;
+    background:rgba(18,24,38,.92);border:1px solid var(--line);border-radius:14px;
+    padding:22px 24px;backdrop-filter:blur(4px);box-shadow:0 24px 50px -28px rgba(0,0,0,.7)}
   .feature-band .cap .eyebrow{margin-bottom:6px}
   .feature-band .cap p{color:var(--text);font-size:clamp(1.1rem,2.4vw,1.5rem);font-weight:600;
     max-width:36ch;letter-spacing:-.01em}
@@ -166,6 +167,7 @@
 
   @media(max-width:880px){
     .hero,.enquire .grid,.cards,.steps,.strip .wrap,.split,footer .fwrap{grid-template-columns:1fr}
+    .feature-band .cap{left:16px;right:16px;bottom:16px;max-width:none}
     .strip .cell{border-right:none;border-bottom:1px solid var(--line)}
     .hero{gap:36px}
   }
