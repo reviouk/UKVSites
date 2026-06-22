@@ -144,6 +144,12 @@
   .modal-close{position:absolute;top:10px;right:14px;background:none;border:none;
     font-family:"Fraunces",serif;font-size:1.7rem;line-height:1;color:var(--ink-soft);cursor:pointer}
   .modal-close:hover{color:var(--oxblood)}
+  .modal-confirm{position:absolute;inset:0;background:rgba(255,253,248,.96);
+    display:flex;align-items:center;justify-content:center;padding:28px;text-align:center;z-index:3}
+  .modal-confirm[hidden]{display:none}
+  .modal-confirm p{font-family:"Fraunces",serif;font-size:1.5rem;line-height:1.15;margin-bottom:8px;color:var(--ink)}
+  .modal-confirm .sub{font-family:inherit;font-size:.95rem;color:var(--ink-soft);margin-bottom:22px}
+  .modal-confirm-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
 
   /* ---------- Footer / disclaimer ---------- */
   footer{background:var(--ink);color:#cdd3dc;padding:40px 0 30px;font-size:.86rem}
@@ -294,6 +300,17 @@
     <p style="color:var(--ink-soft);font-size:.95rem;margin:-6px 0 16px">Our free guide to Scotch whisky cask ownership — sent straight to your inbox.</p>
     <div class="hs-form-frame" data-region="na1" data-form-id="dc90cd0b-4a1e-49bc-b3ec-5597d659d426" data-portal-id="4633795"></div>
     <p class="consent" style="margin-top:14px">By submitting, you agree to be contacted about whisky cask ownership. We never share your details. Capital is at risk.</p>
+
+    <div class="modal-confirm" hidden>
+      <div>
+        <p>Are you sure?</p>
+        <p class="sub">Your free guide to Scotch whisky cask ownership is just one step away.</p>
+        <div class="modal-confirm-actions">
+          <button type="button" class="btn" data-confirm-stay>Request the briefing</button>
+          <button type="button" class="btn btn-ghost" data-confirm-close>Close anyway</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -301,16 +318,30 @@
 (function(){
   var modal=document.getElementById('briefingModal');
   if(!modal)return;
+  var confirmEl=modal.querySelector('.modal-confirm');
   var lastFocus=null;
   function open(e){if(e)e.preventDefault();lastFocus=document.activeElement;
     modal.classList.add('open');document.body.style.overflow='hidden';
     var c=modal.querySelector('.modal-close');if(c)c.focus();}
-  function close(){modal.classList.remove('open');document.body.style.overflow='';
+  function reallyClose(){modal.classList.remove('open');document.body.style.overflow='';
+    if(confirmEl)confirmEl.hidden=true;
     if(lastFocus&&lastFocus.focus)lastFocus.focus();}
+  function requestClose(){ if(confirmEl){confirmEl.hidden=false;
+      var s=confirmEl.querySelector('[data-confirm-stay]');if(s)s.focus();}
+    else{reallyClose();} }
   document.querySelectorAll('[data-open-modal]').forEach(function(b){b.addEventListener('click',open);});
-  modal.querySelectorAll('[data-close-modal]').forEach(function(b){b.addEventListener('click',close);});
-  modal.addEventListener('click',function(e){if(e.target===modal)close();});
-  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&modal.classList.contains('open'))close();});
+  modal.querySelectorAll('[data-close-modal]').forEach(function(b){b.addEventListener('click',requestClose);});
+  modal.addEventListener('click',function(e){if(e.target===modal)requestClose();});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&modal.classList.contains('open'))requestClose();});
+  if(confirmEl){
+    var stay=confirmEl.querySelector('[data-confirm-stay]');
+    var conf=confirmEl.querySelector('[data-confirm-close]');
+    if(stay)stay.addEventListener('click',function(){confirmEl.hidden=true;
+      var c=modal.querySelector('.modal-close');if(c)c.focus();});
+    if(conf)conf.addEventListener('click',reallyClose);
+  }
+  /* Auto-open on landing */
+  window.addEventListener('load',function(){setTimeout(open,400);});
 })();
 </script>
 
