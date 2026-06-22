@@ -61,7 +61,8 @@
   .byline{margin-top:18px;font-size:.74rem;letter-spacing:.16em;text-transform:uppercase;
     color:var(--ink-soft);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);
     padding:10px 0;display:inline-block}
-  .lead-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:44px;align-items:center}
+  .lead-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:44px;align-items:start}
+  .lead-form{position:sticky;top:18px}
   .lead-media{margin:0;border:1px solid var(--rule);background:var(--paper);padding:14px}
   .lead-media svg{width:100%;height:auto;display:block}
   .lead-media figcaption,figure.engraving figcaption{font-size:.7rem;letter-spacing:.16em;
@@ -184,43 +185,14 @@
       <p class="standfirst">With the American tariff on Scotch whisky lifted, demand is set to return to the sector's most valuable export market — and the casks maturing today stand directly in its path.</p>
       <div class="byline">A briefing for private investors</div>
     </div>
-    <figure class="lead-media">
-      <svg viewBox="0 0 340 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Engraving of a maturing whisky cask">
-        <rect width="340" height="380" fill="#fffdf8"/>
-        <rect x="8" y="8" width="324" height="364" fill="none" stroke="#16202e" stroke-width="1.4"/>
-        <rect x="13" y="13" width="314" height="354" fill="none" stroke="#16202e" stroke-width="0.6"/>
-        <g fill="none" stroke="#16202e" stroke-linecap="round">
-          <!-- body -->
-          <path d="M104,80 Q60,190 104,300" stroke-width="1.8"/>
-          <path d="M236,80 Q280,190 236,300" stroke-width="1.8"/>
-          <ellipse cx="170" cy="80" rx="66" ry="17" stroke-width="1.8"/>
-          <ellipse cx="170" cy="80" rx="52" ry="12" stroke-width="1"/>
-          <path d="M104,300 Q170,326 236,300" stroke-width="1.8"/>
-          <!-- staves -->
-          <path d="M132,84 Q104,190 132,298" stroke-width="1"/>
-          <path d="M170,86 Q170,190 170,300" stroke-width="1"/>
-          <path d="M208,84 Q236,190 208,298" stroke-width="1"/>
-          <!-- hoops -->
-          <path d="M90,122 Q170,142 250,122" stroke-width="2.6"/>
-          <path d="M90,130 Q170,150 250,130" stroke-width="1"/>
-          <path d="M62,190 Q170,216 278,190" stroke-width="2.6"/>
-          <path d="M62,200 Q170,226 278,200" stroke-width="1"/>
-          <path d="M90,258 Q170,278 250,258" stroke-width="2.6"/>
-          <path d="M90,266 Q170,286 250,266" stroke-width="1"/>
-          <!-- hatching shade -->
-          <g stroke-width="0.7" opacity="0.5">
-            <line x1="80" y1="160" x2="92" y2="166"/><line x1="78" y1="172" x2="92" y2="178"/>
-            <line x1="77" y1="184" x2="92" y2="190"/><line x1="78" y1="196" x2="92" y2="202"/>
-            <line x1="80" y1="208" x2="92" y2="214"/>
-            <line x1="248" y1="166" x2="260" y2="160"/><line x1="248" y1="178" x2="262" y2="172"/>
-            <line x1="248" y1="190" x2="263" y2="184"/><line x1="248" y1="202" x2="262" y2="196"/>
-            <line x1="248" y1="214" x2="260" y2="208"/>
-          </g>
-        </g>
-        <text x="170" y="346" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-size="13" fill="#7a2230">Cask No. 001 · Maturing</text>
-      </svg>
-      <figcaption>An asset that matures in the cask</figcaption>
-    </figure>
+    <!-- HubSpot form — portal 4633795 (above the fold) -->
+    <div class="hsbox lead-form" id="enquire-top">
+      <h2 class="serif" style="font-size:1.6rem;line-height:1.15;margin-bottom:6px">Request the briefing</h2>
+      <p style="color:var(--ink-soft);font-size:.95rem;margin-bottom:18px">Our free guide to Scotch whisky cask ownership — sent straight to your inbox.</p>
+      <script src="https://js.hsforms.net/forms/embed/4633795.js" defer></script>
+      <div class="hs-form-frame" data-region="na1" data-form-id="dc90cd0b-4a1e-49bc-b3ec-5597d659d426" data-portal-id="4633795"></div>
+      <p class="consent" style="margin-top:16px">By submitting, you agree to be contacted about whisky cask ownership. We never share your details. Capital is at risk.</p>
+    </div>
   </div>
 </section>
 
@@ -290,12 +262,48 @@
     <div>
       <h3 class="serif">Request the investor briefing</h3>
       <p>Leave your details and we'll send our guide to Scotch whisky cask ownership — what's currently available, how ownership and storage work, and what the reopening of the U.S. market could mean for casks maturing now.</p>
+      <figure class="lead-media" style="margin-top:26px">
+        <svg viewBox="0 0 340 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Engraving of a maturing whisky cask">
+          <rect width="340" height="380" fill="#fffdf8"/>
+          <rect x="8" y="8" width="324" height="364" fill="none" stroke="#16202e" stroke-width="1.4"/>
+          <rect x="13" y="13" width="314" height="354" fill="none" stroke="#16202e" stroke-width="0.6"/>
+          <g fill="none" stroke="#16202e" stroke-linecap="round">
+            <!-- body -->
+            <path d="M104,80 Q60,190 104,300" stroke-width="1.8"/>
+            <path d="M236,80 Q280,190 236,300" stroke-width="1.8"/>
+            <ellipse cx="170" cy="80" rx="66" ry="17" stroke-width="1.8"/>
+            <ellipse cx="170" cy="80" rx="52" ry="12" stroke-width="1"/>
+            <path d="M104,300 Q170,326 236,300" stroke-width="1.8"/>
+            <!-- staves -->
+            <path d="M132,84 Q104,190 132,298" stroke-width="1"/>
+            <path d="M170,86 Q170,190 170,300" stroke-width="1"/>
+            <path d="M208,84 Q236,190 208,298" stroke-width="1"/>
+            <!-- hoops -->
+            <path d="M90,122 Q170,142 250,122" stroke-width="2.6"/>
+            <path d="M90,130 Q170,150 250,130" stroke-width="1"/>
+            <path d="M62,190 Q170,216 278,190" stroke-width="2.6"/>
+            <path d="M62,200 Q170,226 278,200" stroke-width="1"/>
+            <path d="M90,258 Q170,278 250,258" stroke-width="2.6"/>
+            <path d="M90,266 Q170,286 250,266" stroke-width="1"/>
+            <!-- hatching shade -->
+            <g stroke-width="0.7" opacity="0.5">
+              <line x1="80" y1="160" x2="92" y2="166"/><line x1="78" y1="172" x2="92" y2="178"/>
+              <line x1="77" y1="184" x2="92" y2="190"/><line x1="78" y1="196" x2="92" y2="202"/>
+              <line x1="80" y1="208" x2="92" y2="214"/>
+              <line x1="248" y1="166" x2="260" y2="160"/><line x1="248" y1="178" x2="262" y2="172"/>
+              <line x1="248" y1="190" x2="263" y2="184"/><line x1="248" y1="202" x2="262" y2="196"/>
+              <line x1="248" y1="214" x2="260" y2="208"/>
+            </g>
+          </g>
+          <text x="170" y="346" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-size="13" fill="#7a2230">Cask No. 001 · Maturing</text>
+        </svg>
+        <figcaption>An asset that matures in the cask</figcaption>
+      </figure>
     </div>
 
     <!-- HubSpot form — portal 4633795 -->
     <div class="hsbox">
       <div class="label" style="font-size:2.1rem;line-height:1.1">Request the briefing</div>
-      <script src="https://js.hsforms.net/forms/embed/4633795.js" defer></script>
       <div class="hs-form-frame" data-region="na1" data-form-id="dc90cd0b-4a1e-49bc-b3ec-5597d659d426" data-portal-id="4633795"></div>
       <p class="consent" style="margin-top:16px">By submitting, you agree to be contacted about whisky cask ownership. We never share your details. Capital is at risk.</p>
     </div>
