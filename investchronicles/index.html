@@ -36,6 +36,11 @@
   .masthead-top{display:flex;justify-content:space-between;align-items:center;
     font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);
     padding:10px 0;border-bottom:1px solid var(--rule)}
+  .masthead-top .mt-meta{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+  .masthead-cta{font-family:"Fraunces",serif;font-size:.72rem;letter-spacing:.12em;
+    text-transform:uppercase;background:var(--oxblood);color:#fff;text-decoration:none;
+    padding:7px 16px;white-space:nowrap;transition:background .2s}
+  .masthead-cta:hover{background:#5e1925}
   .nameplate{text-align:center;padding:22px 0 14px}
   .nameplate h1{font-family:"Fraunces",serif;font-weight:600;font-size:clamp(2.4rem,7vw,4.6rem);
     letter-spacing:.01em;line-height:1}
@@ -139,9 +144,12 @@
 <header class="masthead">
   <div class="wrap">
     <div class="masthead-top">
-      <span>Alternative Assets</span>
-      <span>Established MMXXVI</span>
-      <span>Cask &amp; Spirit Markets</span>
+      <div class="mt-meta">
+        <span>Alternative Assets</span>
+        <span>Established MMXXVI</span>
+        <span>Cask &amp; Spirit Markets</span>
+      </div>
+      <a class="masthead-cta" href="#enquire">Request the briefing</a>
     </div>
     <div class="nameplate">
       <div class="kicker">Markets &middot; Tangible Assets</div>
@@ -270,12 +278,6 @@
     <div>
       <h3 class="serif">Request the investor briefing</h3>
       <p>Leave your details and we'll send our guide to Scotch whisky cask ownership — what's currently available, how ownership and storage work, and what the reopening of the U.S. market could mean for casks maturing now.</p>
-      <div class="callbox">
-        <b>Prefer to talk it through?</b>
-        <p style="margin:8px 0 16px">Book a free, no-obligation 15-minute call at a time that suits you.</p>
-        <!-- Replace the href with your Calendly / booking link -->
-        <a class="btn" href="https://calendly.com/YOUR-LINK" target="_blank" rel="noopener">Book a 15-minute call</a>
-      </div>
     </div>
 
     <!-- HubSpot form — portal 4633795 -->
