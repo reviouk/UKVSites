@@ -33,14 +33,14 @@
 
   /* ---------- Masthead ---------- */
   .masthead{background:var(--paper);border-bottom:3px double var(--line)}
-  .masthead-top{display:flex;justify-content:space-between;align-items:center;
-    font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);
+  .masthead-top{display:flex;justify-content:space-between;align-items:center;gap:14px;
+    flex-wrap:wrap;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);
     padding:10px 0;border-bottom:1px solid var(--rule)}
   .masthead-top .mt-meta{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
   .masthead-cta{font-family:"Fraunces",serif;font-size:.72rem;letter-spacing:.12em;
     text-transform:uppercase;background:var(--oxblood);color:#fff;text-decoration:none;
-    padding:7px 16px;white-space:nowrap;transition:background .2s}
-  .masthead-cta:hover{background:#5e1925}
+    padding:7px 16px;white-space:nowrap;transition:background .2s,transform .2s}
+  .masthead-cta:hover{background:#5e1925;transform:translateY(-1px)}
   .nameplate{text-align:center;padding:22px 0 14px}
   .nameplate h1{font-family:"Fraunces",serif;font-weight:600;font-size:clamp(2.4rem,7vw,4.6rem);
     letter-spacing:.01em;line-height:1}
@@ -69,6 +69,8 @@
     padding-top:9px;border-top:1px solid var(--rule)}
   figure.engraving{margin:30px 0 8px;border:1px solid var(--rule);background:var(--paper);padding:16px}
   figure.engraving svg{width:100%;height:auto;display:block}
+  .lead-media,figure.engraving{transition:box-shadow .25s,transform .25s}
+  .lead-media:hover,figure.engraving:hover{box-shadow:0 10px 30px rgba(22,32,46,.12);transform:translateY(-2px)}
 
   /* ---------- Columns ---------- */
   .article{padding:36px 0 8px;display:grid;grid-template-columns:1.6fr 1fr;gap:48px}
@@ -97,7 +99,10 @@
   .step p{font-size:.98rem;color:var(--ink-soft)}
 
   /* ---------- CTA / form ---------- */
-  .enquire{padding:54px 0}
+  a:focus-visible,.btn:focus-visible,.masthead-cta:focus-visible,
+  .field input:focus-visible,.field textarea:focus-visible{
+    outline:2px solid var(--oxblood);outline-offset:2px}
+  .enquire{padding:54px 0;scroll-margin-top:24px}
   .enquire-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start}
   .enquire h3{font-family:"Fraunces",serif;font-size:clamp(1.8rem,4vw,2.6rem);font-weight:500;line-height:1.1}
   .enquire p{color:var(--ink-soft);margin-top:14px;font-size:1.05rem;max-width:42ch}
@@ -105,8 +110,8 @@
   .callbox b{font-family:"Fraunces",serif}
   .btn{display:inline-block;background:var(--oxblood);color:#fff;text-decoration:none;
     font-family:"Fraunces",serif;font-size:1rem;letter-spacing:.02em;padding:13px 26px;
-    border:none;cursor:pointer;transition:background .2s}
-  .btn:hover{background:#5e1925}
+    border:none;cursor:pointer;transition:background .2s,transform .2s,box-shadow .2s}
+  .btn:hover{background:#5e1925;transform:translateY(-1px);box-shadow:0 6px 18px rgba(22,32,46,.16)}
   .btn-ghost{background:transparent;color:var(--oxblood);border:1.5px solid var(--oxblood)}
   .btn-ghost:hover{background:var(--oxblood);color:#fff}
   .btn-gold{background:var(--gold);color:#1c1305;border:none;font-weight:600}
@@ -135,6 +140,13 @@
   @media(max-width:860px){
     .article,.enquire-grid,.step-grid,.lead-grid,footer .fwrap{grid-template-columns:1fr;gap:30px}
     aside.sidebar{border-top:1px solid var(--rule)}
+    .lead{padding:32px 0 8px}
+    .enquire{padding:40px 0}
+  }
+  @media(prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    *{transition:none!important}
+    .btn:hover,.masthead-cta:hover,.lead-media:hover,figure.engraving:hover{transform:none}
   }
 </style>
 </head>
@@ -282,7 +294,7 @@
 
     <!-- HubSpot form — portal 4633795 -->
     <div class="hsbox">
-      <div class="label" style="font-size:2.1rem">Request the briefing</div>
+      <div class="label" style="font-size:2.1rem;line-height:1.1">Request the briefing</div>
       <script src="https://js.hsforms.net/forms/embed/4633795.js" defer></script>
       <div class="hs-form-frame" data-region="na1" data-form-id="dc90cd0b-4a1e-49bc-b3ec-5597d659d426" data-portal-id="4633795"></div>
       <p class="consent" style="margin-top:16px">By submitting, you agree to be contacted about whisky cask ownership. We never share your details. Capital is at risk.</p>
