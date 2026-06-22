@@ -132,6 +132,19 @@
   .consent{font-size:.8rem;color:var(--ink-soft);margin:6px 0 18px;line-height:1.5}
   form .btn{width:100%}
 
+  /* ---------- Modal ---------- */
+  .modal-overlay{position:fixed;inset:0;background:rgba(22,32,46,.55);
+    display:flex;align-items:flex-start;justify-content:center;padding:6vh 20px;
+    z-index:1000;visibility:hidden;opacity:0;pointer-events:none;transition:opacity .25s}
+  .modal-overlay.open{visibility:visible;opacity:1;pointer-events:auto}
+  .modal{background:var(--paper);border:1px solid var(--rule);max-width:520px;width:100%;
+    padding:34px;position:relative;max-height:88vh;overflow:auto;
+    transform:translateY(-12px);transition:transform .25s}
+  .modal-overlay.open .modal{transform:none}
+  .modal-close{position:absolute;top:10px;right:14px;background:none;border:none;
+    font-family:"Fraunces",serif;font-size:1.7rem;line-height:1;color:var(--ink-soft);cursor:pointer}
+  .modal-close:hover{color:var(--oxblood)}
+
   /* ---------- Footer / disclaimer ---------- */
   footer{background:var(--ink);color:#cdd3dc;padding:40px 0 30px;font-size:.86rem}
   footer .fwrap{display:grid;grid-template-columns:1.5fr 1fr;gap:30px}
@@ -163,7 +176,7 @@
         <span>Established MMXXVI</span>
         <span>Cask &amp; Spirit Markets</span>
       </div>
-      <a class="masthead-cta" href="#enquire">Request the briefing</a>
+      <a class="masthead-cta" href="#enquire" data-open-modal>Request the briefing</a>
     </div>
     <div class="nameplate">
       <div class="kicker">Markets &middot; Tangible Assets</div>
@@ -329,6 +342,34 @@
     </p>
   </div>
 </footer>
+
+<!-- ===== Request-the-briefing modal ===== -->
+<div class="modal-overlay" id="briefingModal" role="dialog" aria-modal="true" aria-label="Request the briefing">
+  <div class="modal">
+    <button class="modal-close" type="button" aria-label="Close" data-close-modal>&times;</button>
+    <div class="label" style="font-size:1.9rem;line-height:1.1">Request the briefing</div>
+    <p style="color:var(--ink-soft);font-size:.95rem;margin:-6px 0 16px">Our free guide to Scotch whisky cask ownership — sent straight to your inbox.</p>
+    <div class="hs-form-frame" data-region="na1" data-form-id="dc90cd0b-4a1e-49bc-b3ec-5597d659d426" data-portal-id="4633795"></div>
+    <p class="consent" style="margin-top:14px">By submitting, you agree to be contacted about whisky cask ownership. We never share your details. Capital is at risk.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  var modal=document.getElementById('briefingModal');
+  if(!modal)return;
+  var lastFocus=null;
+  function open(e){if(e)e.preventDefault();lastFocus=document.activeElement;
+    modal.classList.add('open');document.body.style.overflow='hidden';
+    var c=modal.querySelector('.modal-close');if(c)c.focus();}
+  function close(){modal.classList.remove('open');document.body.style.overflow='';
+    if(lastFocus&&lastFocus.focus)lastFocus.focus();}
+  document.querySelectorAll('[data-open-modal]').forEach(function(b){b.addEventListener('click',open);});
+  modal.querySelectorAll('[data-close-modal]').forEach(function(b){b.addEventListener('click',close);});
+  modal.addEventListener('click',function(e){if(e.target===modal)close();});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&modal.classList.contains('open'))close();});
+})();
+</script>
 
 </body>
 </html>
