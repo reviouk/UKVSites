@@ -88,7 +88,12 @@ You are receiving this because your details are held on a marketing list. If you
 </p>
 <img src="${cfg.baseUrl}/o/${token}.gif" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0">`;
 
-  const fullHtml = `<!doctype html><html><body style="font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.55;color:#222;max-width:620px">${html}${footer}</body></html>`;
+  // Preheader: hidden preview text shown by inbox clients next to the subject.
+  const pre = merge(step.preheader || "", vars).trim();
+  const preheader = pre
+    ? `<div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#ffffff;opacity:0">${escapeHtml(pre)}${"&zwnj;&nbsp;".repeat(40)}</div>`
+    : "";
+  const fullHtml = `<!doctype html><html><body style="font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.55;color:#222;max-width:620px">${preheader}${html}${footer}</body></html>`;
   const text = toText(html) + `\n\n--\nUnsubscribe: ${unsubUrl}`;
   return { subject, html: fullHtml, text, unsubUrl };
 }

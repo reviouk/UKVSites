@@ -29,7 +29,7 @@ export const cfg = {
 // strings must match the option values in external_lead_source exactly (copied
 // from the Instantly connector's SITE_MAP).
 export const SITES = {
-  investchronicles: { label: "Invest Chronicles", url: "https://investchronicles.com", leadSource: "investchronicles" },
+  investchronicles: { label: "The Invest Chronicle", url: "https://investchronicles.com", leadSource: "investchronicles" },
   marketwatcher:    { label: "Market Watcher",    url: "https://marketwatcher.co.uk",  leadSource: "Marketwatcher" },
 };
 

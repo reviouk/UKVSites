@@ -10,6 +10,7 @@ import { q, one, all, getSetting, setSetting } from "./db.js";
 import { todaysCounts, state as senderState, effectiveDailyTotal } from "./sender.js";
 import { replyState, recentReplies, poll as pollReplies } from "./replies.js";
 import { importFile } from "./importer.js";
+import { syncConversions, convState } from "./conversions.js";
 import { verifyMailbox } from "./mailer.js";
 import { escapeHtml as h, toHtml, merge } from "./templates.js";
 
@@ -46,7 +47,7 @@ form.inline{display:inline}.row{display:grid;grid-template-columns:1fr 1fr;gap:1
 pre{background:#f0f2f5;padding:10px;overflow:auto;font-size:12px}
 </style></head><body>
 <header><span class="brand">UKV MAILER</span>
-<a href="/admin">Dashboard</a><a href="/admin/campaigns">Campaigns</a><a href="/admin/contacts">Contacts</a><a href="/admin/mailboxes">Mailboxes</a><a href="/admin/replies">Replies</a><a href="/admin/settings">Settings</a></header>
+<a href="/admin">Dashboard</a><a href="/admin/campaigns">Campaigns</a><a href="/admin/stats">Stats</a><a href="/admin/contacts">Contacts</a><a href="/admin/mailboxes">Mailboxes</a><a href="/admin/replies">Replies</a><a href="/admin/settings">Settings</a></header>
 <main>${flash ? `<div class="flash ${/^(Error|Failed)/i.test(flash) ? "err" : ""}">${h(flash)}</div>` : ""}${body}</main></body></html>`;
 }
 const flashOf = (req) => (req.query.msg ? String(req.query.msg) : "");
@@ -126,6 +127,7 @@ ${camps.map(c => `<tr><td>${c.id}</td><td><a href="/admin/campaigns/${c.id}">${h
 <div class="row"><div><label>Name</label><input type="text" name="name" required placeholder="Market Watcher – GM Clean – Nov 2026"></div>
 <div><label>Site (which domain's mailboxes + landing page)</label><select name="site">${Object.entries(SITES).map(([k, s]) => `<option value="${k}">${h(s.label)} (${k})</option>`).join("")}</select></div></div>
 <label>Step 1 subject</label><input type="text" name="subject" required>
+<label>Step 1 preview text (preheader)</label><input type="text" name="preheader">
 <label>Step 1 body <small>— plain text with blank lines between paragraphs, or HTML. Merge fields: {{first_name|there}} {{last_name}} {{company}} {{site_url}} {{sender_name}}</small></label>
 <textarea name="body" required></textarea>
 <p><button>Create (paused)</button></p></form></div>`;
@@ -136,7 +138,7 @@ admin.post("/campaigns", async (req, res) => {
   const { name, site, subject, body } = req.body;
   if (!SITES[site]) return redirect(res, "/admin/campaigns", "Error: unknown site");
   const c = await one("INSERT INTO campaigns(name,site,status) VALUES($1,$2,'paused') RETURNING id", [name.trim(), site]);
-  await q("INSERT INTO steps(campaign_id,position,delay_days,subject,body_html) VALUES($1,1,0,$2,$3)", [c.id, subject.trim(), body]);
+  await q("INSERT INTO steps(campaign_id,position,delay_days,subject,preheader,body_html) VALUES($1,1,0,$2,$3,$4)", [c.id, subject.trim(), (req.body.preheader || "").trim(), body]);
   redirect(res, `/admin/campaigns/${c.id}`, "Campaign created (paused). Add steps and enrol contacts, then activate.");
 });
 
@@ -167,12 +169,14 @@ admin.get("/campaigns/:id", async (req, res) => {
 ${steps.map(s => `<div class="box"><form method="post" action="/admin/steps/${s.id}">
 <div class="row"><div><label>Step ${s.position} subject <small>(leave blank on follow-ups to send as "Re: step 1 subject")</small></label><input type="text" name="subject" value="${h(s.subject)}"></div>
 <div><label>Delay (days after previous step)</label><input type="number" name="delay_days" value="${s.delay_days}" min="0" ${s.position === 1 ? "disabled" : ""}></div></div>
+<label>Preview text (preheader) <small>— shown next to the subject in the inbox; ~80 characters</small></label><input type="text" name="preheader" value="${h(s.preheader || "")}">
 <label>Body</label><textarea name="body">${h(s.body_html)}</textarea>
 <p><button>Save step</button> <button class="sec" formaction="/admin/steps/${s.id}/delete" formmethod="post" onclick="return confirm('Delete step ${s.position}?')">Delete</button></p>
 <details><summary>Preview with sample data</summary><div style="border:1px solid #e3e6ea;padding:14px;margin-top:8px;font-family:Georgia,serif">${merge(toHtml(s.body_html), sampleVars)}</div></details>
 </form></div>`).join("")}
 <div class="box"><form method="post" action="/admin/campaigns/${c.id}/steps"><h3 style="margin:0 0 6px">Add follow-up step ${steps.length + 1}</h3>
 <div class="row"><div><label>Subject (blank = Re: step 1)</label><input type="text" name="subject"></div><div><label>Delay days</label><input type="number" name="delay_days" value="4" min="1"></div></div>
+<label>Preview text (preheader)</label><input type="text" name="preheader">
 <label>Body</label><textarea name="body" placeholder="Hi {{first_name|there}},&#10;&#10;Just making sure this reached you…"></textarea><p><button>Add step</button></p></form></div>
 
 <h2>Results by step</h2>
@@ -190,14 +194,14 @@ ${steps.map(s => `<div class="box"><form method="post" action="/admin/steps/${s.
 
 admin.post("/campaigns/:id/steps", async (req, res) => {
   const pos = (await one("SELECT COALESCE(max(position),0)+1 AS p FROM steps WHERE campaign_id=$1", [req.params.id])).p;
-  await q("INSERT INTO steps(campaign_id,position,delay_days,subject,body_html) VALUES($1,$2,$3,$4,$5)",
-    [req.params.id, pos, Math.max(1, Number(req.body.delay_days) || 1), (req.body.subject || "").trim(), req.body.body || ""]);
+  await q("INSERT INTO steps(campaign_id,position,delay_days,subject,preheader,body_html) VALUES($1,$2,$3,$4,$5,$6)",
+    [req.params.id, pos, Math.max(1, Number(req.body.delay_days) || 1), (req.body.subject || "").trim(), (req.body.preheader || "").trim(), req.body.body || ""]);
   redirect(res, `/admin/campaigns/${req.params.id}`, `Step ${pos} added`);
 });
 admin.post("/steps/:id", async (req, res) => {
   const s = await one("SELECT * FROM steps WHERE id=$1", [req.params.id]);
-  await q("UPDATE steps SET subject=$2, body_html=$3, delay_days=$4 WHERE id=$1",
-    [s.id, (req.body.subject || "").trim(), req.body.body || "", s.position === 1 ? 0 : Math.max(1, Number(req.body.delay_days) || 1)]);
+  await q("UPDATE steps SET subject=$2, body_html=$3, delay_days=$4, preheader=$5 WHERE id=$1",
+    [s.id, (req.body.subject || "").trim(), req.body.body || "", s.position === 1 ? 0 : Math.max(1, Number(req.body.delay_days) || 1), (req.body.preheader || "").trim()]);
   redirect(res, `/admin/campaigns/${s.campaign_id}`, `Step ${s.position} saved`);
 });
 admin.post("/steps/:id/delete", async (req, res) => {
@@ -250,6 +254,62 @@ admin.post("/campaigns/:id/test", async (req, res) => {
     }
     redirect(res, `/admin/campaigns/${c.id}`, `Sent ${n} test email(s) from ${mailbox.email} to ${recipients.join(", ")}`);
   } catch (e) { redirect(res, `/admin/campaigns/${c.id}`, `Failed: ${e.message}`); }
+});
+
+// ---- stats ------------------------------------------------------------------
+const STATS_SQL = (groupCols, joins, where) => `
+  SELECT ${groupCols},
+         count(s.id)::int                                             AS sent,
+         count(s.id) FILTER (WHERE s.status='bounced')::int           AS bounced,
+         count(s.id) FILTER (WHERE s.status='bounced' AND s.bounce_type='hard')::int AS hard,
+         count(s.id) FILTER (WHERE s.status='bounced' AND s.bounce_type='soft')::int AS soft,
+         count(s.id) FILTER (WHERE s.opened_at IS NOT NULL)::int      AS opened,
+         count(s.id) FILTER (WHERE s.clicked_at IS NOT NULL)::int     AS clicked,
+         count(s.id) FILTER (WHERE s.replied_at IS NOT NULL)::int     AS replied,
+         count(u.contact_id)::int                                     AS unsubscribed,
+         count(cv.id)::int                                            AS converted
+    FROM sends s
+    ${joins}
+    LEFT JOIN LATERAL (SELECT e.contact_id FROM events e WHERE e.type='unsubscribe' AND e.send_id=s.id LIMIT 1) u ON true
+    LEFT JOIN contacts cv ON cv.id = s.contact_id AND cv.converted_at IS NOT NULL AND cv.converted_at >= s.sent_at
+      AND NOT EXISTS (SELECT 1 FROM sends s2 WHERE s2.contact_id = s.contact_id AND s2.sent_at > s.sent_at AND s2.sent_at <= cv.converted_at)
+   WHERE s.status <> 'failed' ${where}
+   GROUP BY ${groupCols.replace(/ AS \w+/g, "")} ORDER BY 1, 2`;
+
+function statsTable(rows, labelCols) {
+  const pct = (a, b) => b ? `${(100 * a / b).toFixed(1)}%` : "–";
+  return `<table><tr>${labelCols.map(c => `<th>${h(c)}</th>`).join("")}<th>Sent</th><th>Delivered</th><th>Bounces</th><th>Bounce rate</th><th>Hard / Soft</th><th>Opens</th><th>Open rate</th><th>Clicks</th><th>CTR</th><th>Click-to-open</th><th>Replies</th><th>Reply rate</th><th>Unsubs</th><th>Conversions</th><th>Conv. rate</th></tr>
+${rows.map(r => { const d = r.sent - r.bounced; return `<tr>${labelCols.map((_, i) => `<td>${h(String(Object.values(r)[i] ?? ""))}</td>`).join("")}
+<td>${r.sent}</td><td>${d}</td><td>${r.bounced}</td><td>${pct(r.bounced, r.sent)}</td><td>${r.hard} / ${r.soft}</td><td>${r.opened}</td><td>${pct(r.opened, d)}</td><td>${r.clicked}</td><td>${pct(r.clicked, d)}</td><td>${pct(r.clicked, r.opened)}</td><td>${r.replied}</td><td>${pct(r.replied, d)}</td><td>${r.unsubscribed}</td><td>${r.converted}</td><td>${pct(r.converted, d)}</td></tr>`; }).join("") || `<tr><td colspan="${labelCols.length + 15}" class="muted">Nothing sent yet</td></tr>`}</table>`;
+}
+
+admin.get("/stats", async (req, res) => {
+  const byCampaign = await all(STATS_SQL("c.name AS campaign", "JOIN campaigns c ON c.id = s.campaign_id", ""));
+  const byStep = await all(STATS_SQL("c.name AS campaign, s.step_position AS step", "JOIN campaigns c ON c.id = s.campaign_id", ""));
+  const byDomain = await all(STATS_SQL("m.domain AS domain", "JOIN mailboxes m ON m.id = s.mailbox_id", ""));
+  const byMailbox = await all(STATS_SQL("m.email AS mailbox", "JOIN mailboxes m ON m.id = s.mailbox_id", ""));
+  const bySource = await all(STATS_SQL("ct.data_source AS data_source", "JOIN contacts ct ON ct.id = s.contact_id", ""));
+  const byDay = await all(STATS_SQL(`to_char(s.sent_at AT TIME ZONE '${cfg.tz}', 'YYYY-MM-DD') AS day`, "", "AND s.sent_at > now() - interval '30 days'"));
+  const bounceReasons = await all(`SELECT COALESCE(bounce_type,'?') AS type, left(error, 90) AS reason, count(*)::int n FROM sends WHERE status='bounced' GROUP BY 1,2 ORDER BY 3 DESC LIMIT 15`);
+  const conv = await all(`SELECT ct.email, ct.first_name, ct.last_name, ct.converted_at, ct.conversion_event, cp.name AS campaign
+      FROM contacts ct LEFT JOIN LATERAL (SELECT s.campaign_id FROM sends s WHERE s.contact_id=ct.id ORDER BY s.sent_at LIMIT 1) f ON true
+      LEFT JOIN campaigns cp ON cp.id = f.campaign_id WHERE ct.converted_at IS NOT NULL ORDER BY ct.converted_at DESC LIMIT 100`);
+  const body = `<h1>Stats</h1>
+<p><small>Opens are inflated by Apple Mail privacy and corporate link scanners; clicks within 20 seconds of delivery and known scanner user-agents are ignored. Rates are against delivered (sent minus bounced). Conversions = HubSpot form submissions (either landing page) made after our email to that person, refreshed hourly. ${h(convState.lastResult || "")}</small>
+<form class="inline" method="post" action="/admin/stats/sync-conversions"><button class="sec">Refresh conversions now</button></form></p>
+<h2>By campaign</h2>${statsTable(byCampaign, ["Campaign"])}
+<h2>By step</h2>${statsTable(byStep, ["Campaign", "Step"])}
+<h2>By sending domain</h2>${statsTable(byDomain, ["Domain"])}
+<h2>By data source</h2>${statsTable(bySource, ["Data source"])}
+<h2>Last 30 days</h2>${statsTable(byDay.reverse(), ["Day"])}
+<h2>By mailbox</h2>${statsTable(byMailbox, ["Mailbox"])}
+<h2>Bounce reasons</h2><table><tr><th>Type</th><th>Reason</th><th>Count</th></tr>${bounceReasons.map(b => `<tr><td>${h(b.type)}</td><td>${h(b.reason || "")}</td><td>${b.n}</td></tr>`).join("") || "<tr><td colspan=3 class=muted>No bounces</td></tr>"}</table>
+<h2>Conversions (form fills)</h2><table><tr><th>When</th><th>Contact</th><th>Form</th><th>First campaign</th></tr>${conv.map(c => `<tr><td>${fmt(c.converted_at)}</td><td>${h(c.first_name || "")} ${h(c.last_name || "")}<br><small>${h(c.email)}</small></td><td>${h(c.conversion_event || "")}</td><td>${h(c.campaign || "")}</td></tr>`).join("") || "<tr><td colspan=4 class=muted>None yet</td></tr>"}</table>`;
+  res.send(page("Stats", body, flashOf(req)));
+});
+admin.post("/stats/sync-conversions", async (req, res) => {
+  try { await syncConversions(); redirect(res, "/admin/stats", convState.lastResult); }
+  catch (e) { redirect(res, "/admin/stats", `Failed: ${e.message}`); }
 });
 
 // ---- contacts ----------------------------------------------------------------

@@ -109,12 +109,26 @@ async function handleMessage(m, uid) {
   const campaign = send ? await one("SELECT * FROM campaigns WHERE id=$1", [send.campaign_id]) : null;
 
   if (isBounce) {
+    // Classify: DSN status 5.x.x = hard (bad address), 4.x.x = soft (temporary). A soft
+    // bounce is logged; the contact is suppressed on a hard bounce or a second soft bounce.
+    const code = (text.match(/\b([245])\.\d{1,3}\.\d{1,3}\b/) || [])[1]
+      || (/user unknown|does not exist|no such user|invalid recipient|recipient rejected|address rejected|mailbox unavailable|\b550\b/i.test(text) ? "5"
+      : /mailbox full|quota|try again|temporar|deferred|delayed|\b42[01]\b|\b45[012]\b/i.test(text) ? "4" : "");
+    const reason = ((text.match(/(?:status|diagnostic-code|reason)\s*:\s*([^\n]{0,160})/i) || [])[1] || subject).slice(0, 160).trim();
+    const bounceType = code === "4" ? "soft" : "hard";
+    const prior = await one("SELECT count(*)::int n FROM events WHERE contact_id=$1 AND type='bounce'", [contact.id]);
+    await q("INSERT INTO events(send_id,contact_id,type,detail) VALUES($1,$2,'bounce',$3)", [send?.id || null, contact.id, `${bounceType}: ${reason}`.slice(0, 300)]);
+    if (send) await q("UPDATE sends SET status='bounced', bounce_type=$2, error=$3 WHERE id=$1", [send.id, bounceType, reason]);
+    if (bounceType === "soft" && prior.n === 0) {
+      // give it one retry window: push the next step out by 2 days instead of stopping
+      await q("UPDATE enrolments SET next_due_at = GREATEST(next_due_at, now() + interval '2 days') WHERE contact_id=$1 AND status='active'", [contact.id]);
+      console.log(`[imap] soft bounce (1st, retrying later): ${contact.email}`);
+      return;
+    }
     await q("UPDATE contacts SET status='bounced', updated_at=now() WHERE id=$1 AND status='active'", [contact.id]);
-    await q("INSERT INTO suppressions(email,reason) VALUES($1,'bounce') ON CONFLICT DO NOTHING", [contact.email]);
+    await q("INSERT INTO suppressions(email,reason) VALUES($1,$2) ON CONFLICT DO NOTHING", [contact.email, `bounce:${bounceType}`]);
     await q("UPDATE enrolments SET status='stopped', stop_reason='bounced' WHERE contact_id=$1 AND status='active'", [contact.id]);
-    if (send) await q("UPDATE sends SET status='bounced' WHERE id=$1", [send.id]);
-    await q("INSERT INTO events(send_id,contact_id,type,detail) VALUES($1,$2,'bounce',$3)", [send?.id || null, contact.id, subject.slice(0, 300)]);
-    console.log(`[imap] bounce: ${contact.email}`);
+    console.log(`[imap] ${bounceType} bounce: ${contact.email}`);
     return;
   }
   if (isAuto) {

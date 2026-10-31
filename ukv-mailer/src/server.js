@@ -6,6 +6,7 @@ import { admin } from "./admin.js";
 import { startSender, state as senderState } from "./sender.js";
 import { startReplyPoller, replyState } from "./replies.js";
 import { ensureProperties } from "./hubspot.js";
+import { startConversionSync } from "./conversions.js";
 
 const app = express();
 app.set("trust proxy", true);
@@ -28,4 +29,5 @@ app.listen(cfg.port, async () => {
   try { await ensureProperties(); } catch (e) { console.warn("[hubspot] property check failed:", e.message); }
   startSender();
   startReplyPoller();
+  startConversionSync();
 });
