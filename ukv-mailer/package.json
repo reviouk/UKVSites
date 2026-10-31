@@ -1,0 +1,26 @@
+{
+  "name": "ukv-mailer",
+  "version": "1.0.0",
+  "description": "Self-hosted cold-email sender for UKV International: sends from Maildoso mailboxes over SMTP, tracks opens/clicks/replies, syncs engagement to HubSpot",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "migrate": "node scripts/migrate.mjs",
+    "import": "node scripts/import.mjs",
+    "seed-mailboxes": "node scripts/seed-mailboxes.mjs",
+    "test-smtp": "node scripts/test-smtp.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "basic-auth": "^2.0.1",
+    "csv-parse": "^5.5.6",
+    "express": "^4.19.2",
+    "imapflow": "^1.0.164",
+    "mailparser": "^3.7.1",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.9.14",
+    "pg": "^8.12.0",
+    "xlsx": "^0.18.5"
+  }
+}
