@@ -40,7 +40,18 @@ function titleCase(s) {
 export function toHtml(body) {
   const b = String(body || "");
   if (/<\s*(p|div|br|a|table|html)\b/i.test(b)) return b;
-  return b.trim().split(/\n{2,}/).map(p => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("\n");
+  return b.trim().split(/\n{2,}/).map(p => `<p>${linkify(escapeHtml(p)).replace(/\n/g, "<br>")}</p>`).join("\n");
+}
+
+/** [text](url) -> styled link; bare URLs / {{site_url}} -> plain links. Runs on already-escaped text. */
+function linkify(t) {
+  const A = (href, text, cta) => cta
+    ? `<a href="${href}" style="display:inline-block;background:#7a2230;color:#ffffff;text-decoration:none;font-weight:600;padding:9px 16px;border-radius:3px">${text}</a>`
+    : `<a href="${href}" style="color:#7a2230">${text}</a>`;
+  return t
+    .replace(/\[([^\]]+)\]\((\{\{\s*site_url\s*\}\}|https?:\/\/[^)\s]+)\)/g, (_, text, href) => A(href, text, true))
+    .replace(/(^|[\s>])(https?:\/\/[^\s<]*[^\s<.,;:!?)])/g, (_, pre, url) => pre + A(url, url, false))
+    .replace(/(^|[\s>])(\{\{\s*site_url\s*\}\})(?=$|[\s<.,])/g, (_, pre, tok) => pre + A(tok, tok, false));
 }
 
 export function escapeHtml(s) {
@@ -52,7 +63,7 @@ export function toText(html) {
   return String(html)
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>|<\/div>|<\/li>/gi, "\n\n")
-    .replace(/<a\s[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href, txt) => `${txt.replace(/<[^>]+>/g, "")} (${href})`)
+    .replace(/<a\s[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href, txt) => { const t = txt.replace(/<[^>]+>/g, "").trim(); return t === href ? href : `${t} (${href})`; })
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
     .replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
