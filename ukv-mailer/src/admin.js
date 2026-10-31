@@ -161,7 +161,7 @@ admin.get("/campaigns/:id", async (req, res) => {
   const body = `<h1>${h(c.name)} <small class="muted">#${c.id} · ${h(c.site)} · ${c.status}</small></h1>
 <div class="cards"><div class="card"><b>${enrol.total}</b><span>enrolled</span></div><div class="card"><b>${enrol.active}</b><span>queued</span></div><div class="card"><b>${enrol.completed}</b><span>completed</span></div><div class="card"><b>${enrol.stopped}</b><span>stopped (reply/bounce/unsub)</span></div></div>
 <form class="inline" method="post" action="/admin/campaigns/${c.id}/status"><input type="hidden" name="status" value="${c.status === "active" ? "paused" : "active"}"><button>${c.status === "active" ? "Pause campaign" : "Activate campaign"}</button></form>
-<form class="inline" method="post" action="/admin/campaigns/${c.id}/test" style="margin-left:12px"><input type="text" name="to" placeholder="send test to…" style="width:240px;display:inline-block"> <button class="sec">Send test (step 1)</button></form>
+<form class="inline" method="post" action="/admin/campaigns/${c.id}/test" style="margin-left:12px"><input type="text" name="to" value="${h(await getSetting("test_recipients", "rob@revio.agency"))}" style="width:260px;display:inline-block" title="comma-separated"> <button class="sec">Send every step to these test recipients</button></form>
 
 <h2>Steps</h2>
 ${steps.map(s => `<div class="box"><form method="post" action="/admin/steps/${s.id}">
@@ -226,17 +226,29 @@ admin.post("/campaigns/:id/enrol", async (req, res) => {
 
 admin.post("/campaigns/:id/test", async (req, res) => {
   const c = await one("SELECT * FROM campaigns WHERE id=$1", [req.params.id]);
-  const step = await one("SELECT * FROM steps WHERE campaign_id=$1 AND position=1", [c.id]);
+  const steps = await all("SELECT * FROM steps WHERE campaign_id=$1 ORDER BY position", [c.id]);
   const mailbox = await one("SELECT * FROM mailboxes WHERE site=$1 AND enabled AND smtp_pass IS NOT NULL AND smtp_pass<>'' ORDER BY random() LIMIT 1", [c.site]);
-  if (!mailbox) return redirect(res, `/admin/campaigns/${c.id}`, "Error: no enabled mailbox with a password for this site");
+  const recipients = String(req.body.to || "").split(/[\s,;]+/).map(s => s.trim()).filter(s => s.includes("@"));
+  if (recipients.length) await setSetting("test_recipients", recipients.join(", "));
+  if (!mailbox) return redirect(res, `/admin/campaigns/${c.id}`, "Error: no enabled mailbox with a password for this site yet");
+  if (!recipients.length) return redirect(res, `/admin/campaigns/${c.id}`, "Error: enter at least one recipient");
   try {
     const { buildEmail, contactVars } = await import("./templates.js");
     const { sendMail } = await import("./mailer.js");
-    const contact = { email: req.body.to, first_name: "Test", last_name: "Contact", company: "Example Ltd" };
-    const vars = contactVars(contact, mailbox, c.site);
-    const built = buildEmail({ step, contact, mailbox, site: c.site, token: "test", vars });
-    await sendMail({ mailbox, to: req.body.to, subject: `[TEST] ${built.subject}`, html: built.html, text: built.text, unsubUrl: built.unsubUrl });
-    redirect(res, `/admin/campaigns/${c.id}`, `Test sent from ${mailbox.email} to ${req.body.to}`);
+    let n = 0;
+    for (const to of recipients) {
+      const contact = { email: to, first_name: "Rob", last_name: "Test", company: "Example Ltd" };
+      const vars = contactVars(contact, mailbox, c.site);
+      let threadId = null, threadSubject = null;
+      for (const step of steps) {
+        const built = buildEmail({ step, contact, mailbox, site: c.site, token: "test", vars });
+        const subject = step.position > 1 && !step.subject.trim() && threadSubject ? `Re: ${threadSubject}` : built.subject;
+        const { messageId } = await sendMail({ mailbox, to, subject: `[TEST step ${step.position}/${steps.length}] ${subject}`, html: built.html, text: built.text, unsubUrl: built.unsubUrl, inReplyTo: step.position > 1 && step.reply_in_thread ? threadId : undefined });
+        if (step.position === 1) { threadId = messageId; threadSubject = built.subject; }
+        n++;
+      }
+    }
+    redirect(res, `/admin/campaigns/${c.id}`, `Sent ${n} test email(s) from ${mailbox.email} to ${recipients.join(", ")}`);
   } catch (e) { redirect(res, `/admin/campaigns/${c.id}`, `Failed: ${e.message}`); }
 });
 
