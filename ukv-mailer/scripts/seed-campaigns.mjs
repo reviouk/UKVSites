@@ -66,7 +66,8 @@ ${CTA}
 
 Best,
 {{sender_name}}
-${B.brand}`,
+${B.brand}
+{{site_url}}`,
     },
     // 2. Recent events
     {
@@ -91,7 +92,8 @@ ${CTA}
 
 Best,
 {{sender_name}}
-${B.brand}`,
+${B.brand}
+{{site_url}}`,
     },
     // 3. Email 3 — the tax quirk
     {
@@ -118,7 +120,8 @@ ${CTA}
 
 Best,
 {{sender_name}}
-${B.brand}`,
+${B.brand}
+{{site_url}}`,
     },
   ];
 }
