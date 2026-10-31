@@ -138,3 +138,15 @@ ALTER TABLE sends ADD COLUMN IF NOT EXISTS bounce_type TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS converted_at TIMESTAMPTZ;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS conversion_event TEXT;
 ALTER TABLE steps ADD COLUMN IF NOT EXISTS preheader TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS callback_events (
+  id            SERIAL PRIMARY KEY,
+  contact_id    TEXT NOT NULL,
+  email         TEXT,
+  owner_id      TEXT,
+  callback_date TEXT NOT NULL,      -- YYYY-MM-DD (HubSpot call_back_date)
+  kind          TEXT NOT NULL,      -- reminder | not_made | nightly_reset
+  detail        TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS callback_events_idx ON callback_events(contact_id, callback_date, kind);

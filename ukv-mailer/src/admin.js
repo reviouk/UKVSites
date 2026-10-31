@@ -11,6 +11,7 @@ import { todaysCounts, state as senderState, effectiveDailyTotal } from "./sende
 import { replyState, recentReplies, poll as pollReplies } from "./replies.js";
 import { importFile } from "./importer.js";
 import { syncConversions, convState } from "./conversions.js";
+import { cbState, recentEvents, tick as callbackTick } from "./callbacks.js";
 import { verifyMailbox } from "./mailer.js";
 import { escapeHtml as h, toHtml, merge } from "./templates.js";
 
@@ -47,7 +48,7 @@ form.inline{display:inline}.row{display:grid;grid-template-columns:1fr 1fr;gap:1
 pre{background:#f0f2f5;padding:10px;overflow:auto;font-size:12px}
 </style></head><body>
 <header><span class="brand">UKV MAILER</span>
-<a href="/admin">Dashboard</a><a href="/admin/campaigns">Campaigns</a><a href="/admin/stats">Stats</a><a href="/admin/contacts">Contacts</a><a href="/admin/mailboxes">Mailboxes</a><a href="/admin/replies">Replies</a><a href="/admin/settings">Settings</a></header>
+<a href="/admin">Dashboard</a><a href="/admin/campaigns">Campaigns</a><a href="/admin/stats">Stats</a><a href="/admin/contacts">Contacts</a><a href="/admin/mailboxes">Mailboxes</a><a href="/admin/replies">Replies</a><a href="/admin/callbacks">Call-backs</a><a href="/admin/settings">Settings</a></header>
 <main>${flash ? `<div class="flash ${/^(Error|Failed)/i.test(flash) ? "err" : ""}">${h(flash)}</div>` : ""}${body}</main></body></html>`;
 }
 const flashOf = (req) => (req.query.msg ? String(req.query.msg) : "");
@@ -188,6 +189,7 @@ ${steps.map(s => `<div class="box"><form method="post" action="/admin/steps/${s.
 <div><label>Max contacts to enrol (blank = all matching)</label><input type="number" name="limit" min="1" placeholder="e.g. 20000"></div></div>
 <label><input type="checkbox" name="skip_instantly" value="1" checked> Skip contacts already emailed by Instantly</label>
 <label><input type="checkbox" name="skip_other" value="1" checked> Skip contacts already enrolled in any other campaign</label>
+<label>Split between brands: <select name="split" style="width:auto;display:inline-block"><option value="">no split – take every matching contact</option><option value="even">this campaign takes every 2nd contact (even ids)</option><option value="odd">this campaign takes the other half (odd ids)</option></select> <small>Use "even" on one brand's campaign and "odd" on the other for a 50/50 split of the same list.</small></label>
 <p><button>Enrol</button> <small>Only status=active contacts not on the suppression list are enrolled. Sending starts when the campaign is active.</small></p></form></div>`;
   res.send(page(c.name, body, flashOf(req)));
 });
@@ -219,6 +221,8 @@ admin.post("/campaigns/:id/enrol", async (req, res) => {
   if (req.body.data_source) { params.push(req.body.data_source); where.push(`ct.data_source=$${params.length}`); }
   if (req.body.skip_instantly) where.push("NOT ct.instantly_contacted");
   if (req.body.skip_other) where.push("NOT EXISTS (SELECT 1 FROM enrolments e2 WHERE e2.contact_id=ct.id)");
+  if (req.body.split === "even") where.push("ct.id % 2 = 0");
+  if (req.body.split === "odd") where.push("ct.id % 2 = 1");
   let limit = "";
   if (req.body.limit) { params.push(Number(req.body.limit)); limit = `LIMIT $${params.length}`; }
   const r = await q(`
@@ -311,6 +315,34 @@ admin.post("/stats/sync-conversions", async (req, res) => {
   try { await syncConversions(); redirect(res, "/admin/stats", convState.lastResult); }
   catch (e) { redirect(res, "/admin/stats", `Failed: ${e.message}`); }
 });
+
+// ---- HubSpot call-back reminders ----------------------------------------------
+admin.get("/callbacks", async (req, res) => {
+  const events = await recentEvents(150);
+  const owners = {};
+  const body = `<h1>HubSpot call-back reminders <small class="muted">(replaces the AWS "Call Reminder" app)</small></h1>
+<div class="cards">
+  <div class="card"><b class="${cbState.enabled ? "ok" : "bad"}">${cbState.enabled ? "LIVE" : "OBSERVING"}</b><span>${cbState.enabled ? "setting Reminder Trigger / Call Back Not Made Trigger in HubSpot" : "watching only – nothing written to HubSpot"}${cbState.dry ? " (dry run)" : ""}</span></div>
+  <div class="card"><b>${cbState.today.length}</b><span>call-backs today + yesterday</span></div>
+  <div class="card"><b>${h(cfg.tz)}</b><span>timezone (BST/GMT automatic) · last tick ${fmt(cbState.lastTick)}</span></div>
+</div>
+<p><small>${h(cbState.lastResult || "not run yet")}</small></p>
+<form class="inline" method="post" action="/admin/callbacks/toggle"><button class="${cbState.enabled ? "danger" : ""}">${cbState.enabled ? "Switch to observing only" : "Go live (write to HubSpot)"}</button></form>
+<form class="inline" method="post" action="/admin/callbacks/tick" style="margin-left:10px"><button class="sec">Run a check now</button></form>
+<h2>Schedule</h2>
+<table><tr><th>Call-back (London)</th><th>Contact</th><th>Owner id</th><th>Status</th></tr>
+${cbState.today.map(c => `<tr><td>${c.date} ${h(c.time)}${c.due ? ` <small class="muted">(${fmt(c.due)})</small>` : ""}</td><td>${h(c.email || "")} <small class="muted">#${c.id}</small></td><td>${h(c.owner || "")}</td><td>${h(c.status)}</td></tr>`).join("") || "<tr><td colspan=4 class=muted>Nothing scheduled</td></tr>"}</table>
+<h2>Recent actions</h2>
+<table><tr><th>When</th><th>Kind</th><th>Contact</th><th>Call-back date</th><th>Detail</th></tr>
+${events.map(e => `<tr><td>${fmt(e.created_at)}</td><td>${h(e.kind)}</td><td>${h(e.email || "")} <small class="muted">#${h(e.contact_id)}</small></td><td>${h(e.callback_date)}</td><td>${h(e.detail || "")}</td></tr>`).join("") || "<tr><td colspan=5 class=muted>None yet</td></tr>"}</table>`;
+  res.send(page("Call-backs", body, flashOf(req)));
+});
+admin.post("/callbacks/toggle", async (req, res) => {
+  await setSetting("callbacks_enabled", cbState.enabled ? "false" : "true");
+  await callbackTick();
+  redirect(res, "/admin/callbacks", cbState.enabled ? "Call-back reminders are LIVE" : "Call-back reminders set to observing only");
+});
+admin.post("/callbacks/tick", async (req, res) => { await callbackTick(); redirect(res, "/admin/callbacks", cbState.lastResult); });
 
 // ---- contacts ----------------------------------------------------------------
 admin.get("/contacts", async (req, res) => {

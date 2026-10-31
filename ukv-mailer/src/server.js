@@ -7,6 +7,7 @@ import { startSender, state as senderState } from "./sender.js";
 import { startReplyPoller, replyState } from "./replies.js";
 import { ensureProperties } from "./hubspot.js";
 import { startConversionSync } from "./conversions.js";
+import { startCallbacks, cbState } from "./callbacks.js";
 
 const app = express();
 app.set("trust proxy", true);
@@ -17,6 +18,7 @@ app.get("/", (_req, res) => res.redirect("/admin"));
 app.get("/healthz", (_req, res) => res.json({
   ok: true, sentToday: senderState.sentToday, lastTick: senderState.lastTick, sender: senderState.lastResult,
   imap: replyState.configured ? replyState.lastResult : "disabled",
+  callbacks: { enabled: cbState.enabled, lastTick: cbState.lastTick, result: cbState.lastResult },
 }));
 
 app.use(tracking);
@@ -30,4 +32,5 @@ app.listen(cfg.port, async () => {
   startSender();
   startReplyPoller();
   startConversionSync();
+  startCallbacks();
 });
