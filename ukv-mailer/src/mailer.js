@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { randomUUID } from "node:crypto";
 import { cfg } from "./config.js";
 
 const transports = new Map(); // mailbox.id -> transporter
@@ -26,7 +27,7 @@ export function transportFor(mailbox) {
  */
 export async function sendMail({ mailbox, to, subject, html, text, unsubUrl, inReplyTo }) {
   const domain = mailbox.email.split("@")[1];
-  const messageId = `<${cryptoId()}@${domain}>`;
+  const messageId = `<${randomUUID()}@${domain}>`;
   const t = transportFor(mailbox);
   const info = await t.sendMail({
     from: { name: mailbox.display_name, address: mailbox.email },
