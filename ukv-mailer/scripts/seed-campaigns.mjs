@@ -40,7 +40,7 @@ Best,
   },
   // 2. New: recent events (facts checked 31 Oct 2026, see header comment)
   {
-    delay_days: 4,
+    delay_days: 10,
     subject: "A real asset while the markets are jumpy",
     body: `Hi {{first_name|there}},
 
@@ -58,7 +58,7 @@ Best,
   },
   // 3. Email 3 — the tax quirk
   {
-    delay_days: 5,
+    delay_days: 13,
     subject: "The tax quirk that makes whisky casks interesting",
     body: `Hi {{first_name|there}},
 
