@@ -89,7 +89,9 @@ You are receiving this because your details are held on a marketing list. If you
 <img src="${cfg.baseUrl}/o/${token}.gif" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0">`;
 
   // Preheader: hidden preview text shown by inbox clients next to the subject.
-  const pre = merge(step.preheader || "", vars).trim();
+  // Hidden preheaders trip SpamAssassin's FONT_INVIS_MSGID (+2.5) via Maildoso's relay, so
+  // they are off unless PREHEADER_HIDDEN=true. The inbox then previews the first body line.
+  const pre = process.env.PREHEADER_HIDDEN === "true" ? merge(step.preheader || "", vars).trim() : "";
   const preheader = pre
     ? `<div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#ffffff;opacity:0">${escapeHtml(pre)}${"&zwnj;&nbsp;".repeat(40)}</div>`
     : "";
