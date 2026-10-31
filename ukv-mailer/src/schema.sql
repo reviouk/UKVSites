@@ -150,3 +150,5 @@ CREATE TABLE IF NOT EXISTS callback_events (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS callback_events_idx ON callback_events(contact_id, callback_date, kind);
+
+ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS warmup_from DATE;  -- NULL = no warm-up schedule

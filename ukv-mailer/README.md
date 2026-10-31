@@ -38,7 +38,11 @@ spreadsheets ─► contacts ─► enrol in campaign ─► paced sender ─►
 * `DAILY_TOTAL` (default 1000) campaign emails per day, spread evenly over
   `SEND_WINDOW_START`–`SEND_WINDOW_END` (`TIMEZONE`, default 08:00–17:30
   Europe/London) on `SEND_DAYS` (Mon–Fri). Burst ceiling 12/minute.
-* Per mailbox: `min(mailbox.daily_cap, MAILBOX_DAILY_CAP, fair share + 5)`.
+* Per mailbox: `min(mailbox.daily_cap, MAILBOX_DAILY_CAP, warm-up limit)`, and the day's total is water-filled across
+  mailboxes so low-cap (warm-up) boxes take only their limit and the others cover the rest.
+* Warm-up: set `warmup_from` (Mailboxes page, or `seed-mailboxes.mjs --warmup`) and the box is limited to
+  5/day in week 1, 10 in week 2, 20 in week 3, 30 in week 4, then only its normal cap.
+* A brand whose mailboxes are all at their allowance for the day is skipped so the other brand keeps sending.
   With 29 mailboxes and 1000/day that is ~35–40 each.
 * A campaign sends only from mailboxes of its `site`
   (`investchronicles` → openinvestchronicleshq.com, `marketwatcher` → the two

@@ -7,7 +7,7 @@ import multer from "multer";
 import express from "express";
 import { cfg, SITES, inSendWindow } from "./config.js";
 import { q, one, all, getSetting, setSetting } from "./db.js";
-import { todaysCounts, state as senderState, effectiveDailyTotal } from "./sender.js";
+import { todaysCounts, state as senderState, effectiveDailyTotal, allowances, warmupCap } from "./sender.js";
 import { replyState, recentReplies, poll as pollReplies } from "./replies.js";
 import { importFile } from "./importer.js";
 import { syncConversions, convState } from "./conversions.js";
@@ -390,15 +390,20 @@ admin.post("/contacts/suppress", async (req, res) => {
 // ---- mailboxes ---------------------------------------------------------------
 admin.get("/mailboxes", async (req, res) => {
   const { perMailbox } = await todaysCounts();
-  const withPass = await all("SELECT id, (smtp_pass IS NOT NULL AND smtp_pass<>'') AS has_pass FROM mailboxes");
+  const withPass = await all("SELECT id, (smtp_pass IS NOT NULL AND smtp_pass<>'') AS has_pass, warmup_from FROM mailboxes");
   const hp = Object.fromEntries(withPass.map(r => [r.id, r.has_pass]));
+  const wf = Object.fromEntries(withPass.map(r => [r.id, r.warmup_from ? new Date(r.warmup_from).toISOString().slice(0, 10) : ""]));
+  const { allowances: al, total: dayTotal } = await allowances();
+  const wcap = (id) => { const c = warmupCap({ warmup_from: wf[id] || null }); return c === Infinity ? "" : c; };
   const body = `<h1>Mailboxes</h1>
-<p><small>SMTP ${h(cfg.smtp.host)}:${cfg.smtp.port}. Global per-mailbox cap ${cfg.mailboxDailyCap}/day. Passwords are stored in the database, never shown.</small></p>
-<table><tr><th>Email</th><th>Display name</th><th>Site</th><th>Cap</th><th>Today</th><th>Password</th><th>Enabled</th><th>Last error</th><th></th></tr>
+<p><small>SMTP ${h(cfg.smtp.host)}:${cfg.smtp.port}. Global per-mailbox cap ${cfg.mailboxDailyCap}/day; today's total ${dayTotal} is shared out so warm-up boxes take only their limit and the rest covers the remainder. Warm-up from a date: week 1 = 5/day, week 2 = 10, week 3 = 20, week 4 = 30, then off. Passwords are stored in the database, never shown.</small></p>
+<table><tr><th>Email</th><th>Display name</th><th>Site</th><th>Cap</th><th>Warm-up from</th><th>Allowed today</th><th>Today</th><th>Password</th><th>Enabled</th><th>Last error</th><th></th></tr>
 ${perMailbox.map(m => `<tr><form method="post" action="/admin/mailboxes/${m.id}">
 <td>${h(m.email)}</td><td><input type="text" name="display_name" value="${h(m.display_name)}"></td>
 <td><select name="site">${Object.keys(SITES).map(k => `<option ${k === m.site ? "selected" : ""}>${k}</option>`).join("")}</select></td>
-<td><input type="number" name="daily_cap" value="${m.daily_cap}" min="0" style="width:70px"></td><td>${m.sent_today}</td>
+<td><input type="number" name="daily_cap" value="${m.daily_cap}" min="0" style="width:70px"></td>
+<td><input type="date" name="warmup_from" value="${wf[m.id]}" style="width:140px">${wcap(m.id) !== "" ? ` <small class="muted">${wcap(m.id)}/day</small>` : ""}</td>
+<td>${al.get(m.id) ?? '<span class="muted">—</span>'}</td><td>${m.sent_today}</td>
 <td>${hp[m.id] ? '<span class="ok">set</span>' : '<span class="bad">missing</span>'} <input type="password" name="smtp_pass" placeholder="new password" autocomplete="new-password" style="width:130px;display:inline-block"></td>
 <td><input type="checkbox" name="enabled" value="1" ${m.enabled ? "checked" : ""}></td>
 <td class="bad" style="max-width:220px;font-size:12px">${m.last_error ? h(m.last_error.slice(0, 120)) : ""}</td>
@@ -418,8 +423,8 @@ admin.post("/mailboxes", async (req, res) => {
 });
 admin.post("/mailboxes/:id", async (req, res) => {
   await q(`UPDATE mailboxes SET display_name=$2, site=$3, daily_cap=$4, enabled=$5, last_error = CASE WHEN $5 THEN NULL ELSE last_error END,
-           smtp_pass = CASE WHEN $6<>'' THEN $6 ELSE smtp_pass END WHERE id=$1`,
-    [req.params.id, req.body.display_name.trim(), req.body.site, Number(req.body.daily_cap) || 0, !!req.body.enabled, req.body.smtp_pass || ""]);
+           smtp_pass = CASE WHEN $6<>'' THEN $6 ELSE smtp_pass END, warmup_from = NULLIF($7,'')::date WHERE id=$1`,
+    [req.params.id, req.body.display_name.trim(), req.body.site, Number(req.body.daily_cap) || 0, !!req.body.enabled, req.body.smtp_pass || "", String(req.body.warmup_from || "").trim()]);
   redirect(res, "/admin/mailboxes", "Saved");
 });
 admin.post("/mailboxes/:id/verify", async (req, res) => {

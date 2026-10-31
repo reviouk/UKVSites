@@ -9,7 +9,54 @@ import { pool, q, one, all, getSetting, setSetting } from "./db.js";
 import { buildEmail, contactVars } from "./templates.js";
 import { sendMail } from "./mailer.js";
 
-const MAX_PER_TICK = 12;       // burst ceiling per minute (1000/day over 9.5h is ~1.75/min)
+const MAX_PER_TICK = 12;
+
+/**
+ * Warm-up schedule for a mailbox by age since warmup_from (local date):
+ * week 1: 5/day, week 2: 10, week 3: 20, week 4: 30, then no warm-up limit.
+ */
+export const WARMUP_STEPS = [5, 10, 20, 30];
+export function warmupCap(m) {
+  if (!m.warmup_from) return Infinity;
+  const from = new Date(m.warmup_from instanceof Date ? m.warmup_from.toISOString().slice(0, 10) : String(m.warmup_from).slice(0, 10));
+  const day = Math.floor((new Date(nowLocal().dateKey) - from) / 86400e3);   // 0 = first day
+  if (day < 0) return 0;
+  const week = Math.floor(day / 7);
+  return week < WARMUP_STEPS.length ? WARMUP_STEPS[week] : Infinity;
+}
+/** Hard ceiling for a mailbox today, before the daily total is shared out. */
+export function hardCap(m) {
+  return Math.max(0, Math.min(m.daily_cap, cfg.mailboxDailyCap, warmupCap(m)));
+}
+
+/**
+ * Share the day's total across active mailboxes by water-filling: a mailbox with a
+ * low cap (warm-up) takes only its cap and the remainder is spread over the others.
+ * Returns Map(id -> allowance) with a little headroom so the pace can be met.
+ */
+export async function allowances() {
+  const { total } = await effectiveDailyTotal();
+  const boxes = await all("SELECT * FROM mailboxes WHERE enabled AND smtp_pass IS NOT NULL AND smtp_pass <> '' ORDER BY id");
+  const out = new Map();
+  let remaining = total, left = boxes.length;
+  for (const m of [...boxes].sort((a, b) => hardCap(a) - hardCap(b))) {
+    const share = Math.min(hardCap(m), Math.ceil(remaining / Math.max(1, left)));
+    out.set(m.id, Math.min(hardCap(m), share + 3));
+    remaining -= share; left--;
+  }
+  return { total, boxes, allowances: out };
+}
+
+/** Which brands still have a mailbox with room today. */
+async function sitesWithCapacity() {
+  const { boxes, allowances: al } = await allowances();
+  const since = startOfLocalDay();
+  const sent = await all("SELECT mailbox_id, count(*)::int n FROM sends WHERE sent_at >= $1 AND status <> 'failed' GROUP BY mailbox_id", [since]);
+  const n = Object.fromEntries(sent.map(r => [r.mailbox_id, r.n]));
+  const sites = new Set();
+  for (const m of boxes) if ((n[m.id] || 0) < (al.get(m.id) || 0)) sites.add(m.site);
+  return [...sites];
+}       // burst ceiling per minute (1000/day over 9.5h is ~1.75/min)
 let running = false;
 export const state = { lastTick: null, lastResult: "", sentToday: 0 };
 
@@ -70,10 +117,12 @@ export async function tick() {
     let toSend = Math.min(MAX_PER_TICK, dailyTotal - sentToday, shouldHaveSent - sentToday);
     if (toSend <= 0) { state.lastResult = `on pace (${sentToday}/${dailyTotal})`; return; }
 
+    const sites = await sitesWithCapacity();
+    if (!sites.length) { state.lastResult = `all mailboxes at cap (${sentToday}/${dailyTotal})`; return; }
     let sent = 0, skipped = 0;
     const gap = Math.floor(55_000 / (toSend + 1)); // spread this minute's sends out
     for (let i = 0; i < toSend; i++) {
-      const r = await sendOne();
+      const r = await sendOne(sites);
       if (r === "sent") sent++;
       else if (r === "nothing-due" || r === "no-mailbox") { state.lastResult = r; break; }
       else skipped++;
@@ -88,7 +137,7 @@ export async function tick() {
 }
 
 /** Pick one due enrolment, lock it, send it. Returns sent | nothing-due | no-mailbox | skipped */
-async function sendOne() {
+async function sendOne(sites) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -96,13 +145,13 @@ async function sendOne() {
       SELECT e.*, c.name AS campaign_name, c.site AS campaign_site, c.daily_cap AS campaign_cap,
              ct.email AS contact_email, ct.first_name, ct.last_name, ct.company, ct.phone, ct.data_source, ct.status AS contact_status
         FROM enrolments e
-        JOIN campaigns c ON c.id = e.campaign_id AND c.status = 'active'
+        JOIN campaigns c ON c.id = e.campaign_id AND c.status = 'active' AND c.site = ANY($1)
         JOIN contacts ct ON ct.id = e.contact_id
        WHERE e.status = 'active' AND e.next_due_at <= now()
          AND ct.status = 'active'
          AND NOT EXISTS (SELECT 1 FROM suppressions s WHERE s.email = ct.email)
        ORDER BY e.current_step DESC, e.next_due_at ASC
-       LIMIT 1 FOR UPDATE OF e SKIP LOCKED`);
+       LIMIT 1 FOR UPDATE OF e SKIP LOCKED`, [sites]);
     const en = rows[0];
     if (!en) { await client.query("ROLLBACK"); return "nothing-due"; }
 
@@ -178,7 +227,7 @@ async function sendOne() {
   }
 }
 
-/** Sticky persona if possible, else the least-used enabled mailbox for the campaign's site that is under its cap. */
+/** Sticky persona if possible, else the least-used enabled mailbox for the campaign's site that is under today's allowance. */
 async function pickMailbox(client, en) {
   const since = startOfLocalDay();
   const { rows } = await client.query(`
@@ -186,13 +235,9 @@ async function pickMailbox(client, en) {
       FROM mailboxes m LEFT JOIN sends s ON s.mailbox_id = m.id
      WHERE m.enabled AND m.site = $1 AND m.smtp_pass IS NOT NULL AND m.smtp_pass <> ''
      GROUP BY m.id`, [en.campaign_site, since]);
-  const active = rows.length;
-  if (!active) return null;
-  const { total: dailyTotal } = await effectiveDailyTotal();
-  const allActive = await one("SELECT count(*)::int n FROM mailboxes WHERE enabled AND smtp_pass IS NOT NULL AND smtp_pass <> ''");
-  const fairShare = Math.ceil(dailyTotal / Math.max(1, allActive.n));
-  const capOf = (m) => Math.min(m.daily_cap, cfg.mailboxDailyCap, Math.max(fairShare, 1) + 5); // small headroom over fair share
-  const eligible = rows.filter(m => m.sent_today < capOf(m));
+  if (!rows.length) return null;
+  const { allowances: al } = await allowances();
+  const eligible = rows.filter(m => m.sent_today < (al.get(m.id) || 0));
   if (!eligible.length) return null;
   const sticky = eligible.find(m => m.id === en.mailbox_id);
   if (sticky) return sticky;
