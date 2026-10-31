@@ -19,6 +19,21 @@ const HS = "https://api.hubapi.com";
 const headers = () => ({ Authorization: `Bearer ${cfg.hubspot.token}`, "Content-Type": "application/json" });
 const enabled = () => cfg.hubspot.enabled && !!cfg.hubspot.token;
 
+// HubSpot's `data_source` is a dropdown. Map our spreadsheet labels onto its
+// existing option values; anything unmapped is left unset rather than failing the upsert.
+const DATA_SOURCE_MAP = {
+  "goldmine data - affluant": "Goldmine Data Affluent",
+  "goldmine data affluent": "Goldmine Data Affluent",
+  "hemmingway global": "Hemmingway Global",
+  "gm clean": "Goldmine Data",
+  "goldmine data": "Goldmine Data",
+  "consumer data affluant": "Consumer data Affluant",
+  "finely fettled": "FINELY FETTLED",
+  "marko data - ken": "MARKO KEN",
+  "marko ken": "MARKO KEN",
+};
+export const mapDataSource = (v) => DATA_SOURCE_MAP[String(v || "").trim().toLowerCase()] || "";
+
 const BOOL_OPTIONS = [
   { label: "Yes", value: "true", displayOrder: 0, hidden: false },
   { label: "No", value: "false", displayOrder: 1, hidden: false },
@@ -85,7 +100,7 @@ async function upsert({ contact, campaign, engagement, site }) {
     ...(c.phone ? { phone: c.phone } : {}),
     ...(campaign?.name ? { instantly_campaign: campaign.name } : {}),
     ...(leadSource ? { external_lead_source: leadSource } : {}),
-    ...(c.data_source ? { data_source: c.data_source } : {}),
+    ...(mapDataSource(c.data_source) ? { data_source: mapDataSource(c.data_source) } : {}),
     instantly_last_engaged: when,
   };
   if (engagement === "opened") Object.assign(properties, { instantly_opened: true, instantly_engagement: "opened" });

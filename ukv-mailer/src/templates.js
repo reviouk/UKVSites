@@ -45,9 +45,8 @@ export function toHtml(body) {
 
 /** [text](url) -> styled link; bare URLs / {{site_url}} -> plain links. Runs on already-escaped text. */
 function linkify(t) {
-  const A = (href, text, cta) => cta
-    ? `<a href="${href}" style="display:inline-block;background:#7a2230;color:#ffffff;text-decoration:none;font-weight:600;padding:9px 16px;border-radius:3px">${text}</a>`
-    : `<a href="${href}" style="color:#7a2230">${text}</a>`;
+  // Plain text links only (no buttons) — reads like a personal email.
+  const A = (href, text, cta) => `<a href="${href}" style="color:#7a2230;${cta ? "font-weight:600;" : ""}text-decoration:underline">${text}</a>`;
   return t
     .replace(/\[([^\]]+)\]\((\{\{\s*site_url\s*\}\}|https?:\/\/[^)\s]+)\)/g, (_, text, href) => A(href, text, true))
     .replace(/(^|[\s>])(https?:\/\/[^\s<]*[^\s<.,;:!?)])/g, (_, pre, url) => pre + A(url, url, false))
