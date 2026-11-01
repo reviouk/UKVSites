@@ -32,6 +32,7 @@ spreadsheets ─► contacts ─► enrol in campaign ─► paced sender ─►
 | `scripts/seed-mailboxes.mjs` | Upsert the 29 mailboxes (`data/mailboxes.csv`, or a Maildoso export with passwords) |
 | `scripts/sync-instantly.mjs` | Pull Instantly campaigns (as paused campaigns here) and leads (flag already-contacted, suppress replied/bounced/unsubscribed) |
 | `scripts/test-smtp.mjs` | Verify SMTP login for every mailbox |
+| `docs/google-workspace-pool.md` | Setting up the Google Workspace sending pool for Microsoft-hosted recipients (domains, DNS, service account, routing) |
 | `scripts/classify-mx.mjs` | Tag contacts with the mail provider behind their domain's MX (microsoft / google / yahoo / apple / gateway / other / none). Settings → Routing sends each provider from a mailbox *pool* or holds it. Microsoft is held by default: Maildoso's relay has no reverse DNS and Microsoft 365 junks it (SFV:SPM, PTR:InfoDomainNonexistent) |
 | `scripts/verify-emails.mjs` | Bulk email verification via MillionVerifier (`run` = upload, wait, import). Sets `contacts.verify_result`; invalid/disposable become `bounced`. Enrolment defaults to verified-OK only |
 

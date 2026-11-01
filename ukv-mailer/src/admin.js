@@ -401,9 +401,9 @@ admin.post("/contacts/suppress", async (req, res) => {
 // ---- mailboxes ---------------------------------------------------------------
 admin.get("/mailboxes", async (req, res) => {
   const { perMailbox } = await todaysCounts();
-  const withPass = await all("SELECT id, (smtp_pass IS NOT NULL AND smtp_pass<>'') AS has_pass, warmup_from, pool, smtp_host, smtp_port FROM mailboxes");
+  const withPass = await all("SELECT id, (smtp_pass IS NOT NULL AND smtp_pass<>'') AS has_pass, warmup_from, pool, smtp_host, smtp_port, auth_type FROM mailboxes");
   const extra = Object.fromEntries(withPass.map(r => [r.id, r]));
-  for (const m of perMailbox) Object.assign(m, { pool: extra[m.id]?.pool || "maildoso", smtp_host: extra[m.id]?.smtp_host, smtp_port: extra[m.id]?.smtp_port });
+  for (const m of perMailbox) Object.assign(m, { pool: extra[m.id]?.pool || "maildoso", smtp_host: extra[m.id]?.smtp_host, smtp_port: extra[m.id]?.smtp_port, auth_type: extra[m.id]?.auth_type || "password" });
   const hp = Object.fromEntries(withPass.map(r => [r.id, r.has_pass]));
   const wf = Object.fromEntries(withPass.map(r => [r.id, r.warmup_from ? new Date(r.warmup_from).toISOString().slice(0, 10) : ""]));
   const { allowances: al, total: dayTotal } = await allowances();
@@ -414,7 +414,7 @@ admin.get("/mailboxes", async (req, res) => {
 ${perMailbox.map(m => `<tr><form method="post" action="/admin/mailboxes/${m.id}">
 <td>${h(m.email)}</td><td><input type="text" name="display_name" value="${h(m.display_name)}"></td>
 <td><select name="site">${Object.keys(SITES).map(k => `<option ${k === m.site ? "selected" : ""}>${k}</option>`).join("")}</select></td>
-<td><input type="text" name="pool" value="${h(m.pool)}" style="width:90px" title="pool name (routing on Settings)"><br><input type="text" name="smtp_host" value="${h(m.smtp_host || "")}" placeholder="${h(cfg.smtp.host)}" style="width:150px;font-size:12px"><input type="text" name="smtp_port" value="${m.smtp_port || ""}" placeholder="${cfg.smtp.port}" style="width:48px;font-size:12px"></td>
+<td><input type="text" name="pool" value="${h(m.pool)}" style="width:90px" title="pool name (routing on Settings)"> <select name="auth_type" style="width:auto;display:inline-block;font-size:12px"><option value="password" ${m.auth_type !== "google" ? "selected" : ""}>password</option><option value="google" ${m.auth_type === "google" ? "selected" : ""}>Google OAuth2</option></select><br><input type="text" name="smtp_host" value="${h(m.smtp_host || "")}" placeholder="${h(cfg.smtp.host)}" style="width:150px;font-size:12px"><input type="text" name="smtp_port" value="${m.smtp_port || ""}" placeholder="${cfg.smtp.port}" style="width:48px;font-size:12px"></td>
 <td><input type="number" name="daily_cap" value="${m.daily_cap}" min="0" style="width:70px"></td>
 <td><input type="date" name="warmup_from" value="${wf[m.id]}" style="width:140px">${wcap(m.id) !== "" ? ` <small class="muted">${wcap(m.id)}/day</small>` : ""}</td>
 <td>${al.get(m.id) ?? '<span class="muted">—</span>'}</td><td>${m.sent_today}</td>
@@ -425,23 +425,26 @@ ${perMailbox.map(m => `<tr><form method="post" action="/admin/mailboxes/${m.id}"
 </table>
 <h2>Add mailbox</h2><div class="box"><form method="post" action="/admin/mailboxes">
 <div class="row"><div><label>Email</label><input type="text" name="email" required></div><div><label>Display name</label><input type="text" name="display_name" required></div></div>
-<div class="row"><div><label>Pool</label><input type="text" name="pool" value="maildoso"></div><div><label>SMTP host : port (blank = ${h(cfg.smtp.host)}:${cfg.smtp.port})</label><input type="text" name="smtp_host" placeholder="smtp.gmail.com" style="width:60%;display:inline-block"> <input type="text" name="smtp_port" placeholder="587" style="width:30%;display:inline-block"></div></div>
+<div class="row"><div><label>Pool / auth</label><input type="text" name="pool" value="maildoso" style="width:55%;display:inline-block"> <select name="auth_type" style="width:40%;display:inline-block"><option value="password">password</option><option value="google">Google OAuth2</option></select></div><div><label>SMTP host : port (blank = ${h(cfg.smtp.host)}:${cfg.smtp.port})</label><input type="text" name="smtp_host" placeholder="smtp.gmail.com" style="width:60%;display:inline-block"> <input type="text" name="smtp_port" placeholder="587" style="width:30%;display:inline-block"></div></div>
 <div class="row"><div><label>Site</label><select name="site">${Object.keys(SITES).map(k => `<option>${k}</option>`).join("")}</select></div><div><label>SMTP password</label><input type="password" name="smtp_pass" autocomplete="new-password"></div></div>
 <p><button>Add</button></p></form></div>`;
   res.send(page("Mailboxes", body, flashOf(req)));
 });
 admin.post("/mailboxes", async (req, res) => {
   const email = String(req.body.email || "").trim().toLowerCase();
-  await q("INSERT INTO mailboxes(email,display_name,domain,site,smtp_pass,pool,smtp_host,smtp_port) VALUES($1,$2,$3,$4,NULLIF($5,''),$6,NULLIF($7,''),NULLIF($8,'')::int) ON CONFLICT(email) DO NOTHING",
-    [email, req.body.display_name.trim(), email.split("@")[1], req.body.site, req.body.smtp_pass || "", String(req.body.pool || "maildoso").trim() || "maildoso", String(req.body.smtp_host || "").trim(), String(req.body.smtp_port || "").replace(/[^0-9]/g, "")]);
+  const google = req.body.auth_type === "google";
+  await q("INSERT INTO mailboxes(email,display_name,domain,site,smtp_pass,pool,smtp_host,smtp_port,auth_type) VALUES($1,$2,$3,$4,NULLIF($5,''),$6,NULLIF($7,''),NULLIF($8,'')::int,$9) ON CONFLICT(email) DO NOTHING",
+    [email, req.body.display_name.trim(), email.split("@")[1], req.body.site, req.body.smtp_pass || (google ? "oauth2" : ""), String(req.body.pool || "maildoso").trim() || "maildoso", String(req.body.smtp_host || "").trim(), String(req.body.smtp_port || "").replace(/[^0-9]/g, ""), google ? "google" : "password"]);
   redirect(res, "/admin/mailboxes", `Added ${email}`);
 });
 admin.post("/mailboxes/:id", async (req, res) => {
   await q(`UPDATE mailboxes SET display_name=$2, site=$3, daily_cap=$4, enabled=$5, last_error = CASE WHEN $5 THEN NULL ELSE last_error END,
            smtp_pass = CASE WHEN $6<>'' THEN $6 ELSE smtp_pass END, warmup_from = NULLIF($7,'')::date,
-           pool = $8, smtp_host = NULLIF($9,''), smtp_port = NULLIF($10,'')::int WHERE id=$1`,
+           pool = $8, smtp_host = NULLIF($9,''), smtp_port = NULLIF($10,'')::int, auth_type = $11,
+           smtp_pass = CASE WHEN $11 = 'google' AND (smtp_pass IS NULL OR smtp_pass = '') THEN 'oauth2' ELSE smtp_pass END WHERE id=$1`,
     [req.params.id, req.body.display_name.trim(), req.body.site, Number(req.body.daily_cap) || 0, !!req.body.enabled, req.body.smtp_pass || "", String(req.body.warmup_from || "").trim(),
-     String(req.body.pool || "maildoso").trim() || "maildoso", String(req.body.smtp_host || "").trim(), String(req.body.smtp_port || "").replace(/[^0-9]/g, "")]);
+     String(req.body.pool || "maildoso").trim() || "maildoso", String(req.body.smtp_host || "").trim(), String(req.body.smtp_port || "").replace(/[^0-9]/g, ""),
+     req.body.auth_type === "google" ? "google" : "password"]);
   redirect(res, "/admin/mailboxes", "Saved");
 });
 admin.post("/mailboxes/:id/verify", async (req, res) => {

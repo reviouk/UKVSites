@@ -174,6 +174,7 @@ CREATE TABLE IF NOT EXISTS mx_cache (
 ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS pool      TEXT NOT NULL DEFAULT 'maildoso';  -- which sending infrastructure
 ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS smtp_host TEXT;                              -- NULL = SMTP_HOST env
 ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS smtp_port INT;                               -- NULL = SMTP_PORT env
+ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS auth_type TEXT NOT NULL DEFAULT 'password';  -- password | google (service-account OAuth2, GOOGLE_SA_JSON)
 
 CREATE TABLE IF NOT EXISTS verify_jobs (
   file_id     TEXT PRIMARY KEY,                     -- MillionVerifier file id

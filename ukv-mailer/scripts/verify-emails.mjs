@@ -45,10 +45,19 @@ async function upload() {
     if (emails.length) await q("INSERT INTO verify_pending SELECT unnest($1::text[])", [emails]);
   }
   where.push("NOT EXISTS (SELECT 1 FROM verify_pending p WHERE p.email=contacts.email)");
+  // Dead domains (no MX, no A) are never worth a credit. Microsoft-hosted contacts go last
+  // because routing holds them until a non-Maildoso pool exists; never-contacted first.
+  where.push("COALESCE(mail_provider,'') <> 'none'");
   const limit = Math.max(1, Number(opt.limit || 100000));
-  const rows = await all(`SELECT email FROM contacts WHERE ${where.join(" AND ")} ORDER BY instantly_contacted, id LIMIT ${limit}`, params);
+  const rows = await all(`SELECT email FROM contacts WHERE ${where.join(" AND ")}
+                          ORDER BY (mail_provider = 'microsoft'), instantly_contacted, id LIMIT ${limit}`, params);
   if (!rows.length) { console.log("nothing to verify"); return []; }
-  console.log(`${rows.length} contacts to verify`);
+  const credits = await (await fetch(`https://api.millionverifier.com/api/v3/credits?api=${encodeURIComponent(KEY)}`)).json();
+  console.log(`${rows.length} contacts to verify; ${credits.credits ?? "?"} credits available`);
+  if (Number(credits.credits) < rows.length) {
+    console.error(`not enough credits: need ${rows.length}, have ${credits.credits}. Buy credits or pass --limit=${credits.credits}.`);
+    process.exit(2);
+  }
   const ids = [];
   for (let i = 0; i < rows.length; i += CHUNK) {
     const emails = rows.slice(i, i + CHUNK).map(r => r.email);
