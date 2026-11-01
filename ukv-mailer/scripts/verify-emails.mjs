@@ -1,6 +1,6 @@
 // Bulk email verification through MillionVerifier (https://developer.millionverifier.com).
 //
-//   node scripts/verify-emails.mjs upload [--limit=100000] [--source="GM CLEAN"] [--site=investchronicles] [--recheck-days=180]
+//   node scripts/verify-emails.mjs upload [--limit=100000] [--microsoft=15000] [--source="GM CLEAN"] [--site=investchronicles] [--recheck-days=180]
 //   node scripts/verify-emails.mjs status                      # progress of every job not yet imported
 //   node scripts/verify-emails.mjs import [file_id]            # pull results into contacts (all finished jobs if no id)
 //   node scripts/verify-emails.mjs run [upload flags]          # upload, wait, import
@@ -49,8 +49,16 @@ async function upload() {
   // because routing holds them until a non-Maildoso pool exists; never-contacted first.
   where.push("COALESCE(mail_provider,'') <> 'none'");
   const limit = Math.max(1, Number(opt.limit || 100000));
-  const rows = await all(`SELECT email FROM contacts WHERE ${where.join(" AND ")}
-                          ORDER BY (mail_provider = 'microsoft'), instantly_contacted, id LIMIT ${limit}`, params);
+  // --microsoft=N reserves N of the limit for Microsoft-hosted contacts, so they are verified and
+  // ready for the Google pool; the rest of the limit goes to contacts that can be sent to today.
+  const msShare = Math.min(limit, Math.max(0, Number(opt.microsoft || 0)));
+  const clause = where.join(" AND ");
+  const pickMs = msShare ? await all(`SELECT email FROM contacts WHERE ${clause} AND mail_provider='microsoft'
+                                      ORDER BY instantly_contacted, id LIMIT ${msShare}`, params) : [];
+  const rest = await all(`SELECT email FROM contacts WHERE ${clause} AND COALESCE(mail_provider,'') <> 'microsoft'
+                          ORDER BY instantly_contacted, id LIMIT ${limit - pickMs.length}`, params);
+  const rows = [...rest, ...pickMs];
+  if (msShare) console.log(`selected ${rest.length} sendable now + ${pickMs.length} Microsoft-hosted`);
   if (!rows.length) { console.log("nothing to verify"); return []; }
   const credits = await (await fetch(`https://api.millionverifier.com/api/v3/credits?api=${encodeURIComponent(KEY)}`)).json();
   console.log(`${rows.length} contacts to verify; ${credits.credits ?? "?"} credits available`);
