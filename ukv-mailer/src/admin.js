@@ -164,7 +164,7 @@ admin.get("/campaigns/:id", async (req, res) => {
   const body = `<h1>${h(c.name)} <small class="muted">#${c.id} · ${h(c.site)} · ${c.status}</small></h1>
 <div class="cards"><div class="card"><b>${enrol.total}</b><span>enrolled</span></div><div class="card"><b>${enrol.active}</b><span>queued</span></div><div class="card"><b>${enrol.completed}</b><span>completed</span></div><div class="card"><b>${enrol.stopped}</b><span>stopped (reply/bounce/unsub)</span></div></div>
 <form class="inline" method="post" action="/admin/campaigns/${c.id}/status"><input type="hidden" name="status" value="${c.status === "active" ? "paused" : "active"}"><button>${c.status === "active" ? "Pause campaign" : "Activate campaign"}</button></form>
-<form class="inline" method="post" action="/admin/campaigns/${c.id}/test" style="margin-left:12px"><input type="text" name="to" value="${h(await getSetting("test_recipients", "rob@revio.agency"))}" style="width:260px;display:inline-block" title="comma-separated"> <label style="display:inline"><input type="checkbox" name="realistic" value="1"> realistic (step 1 only, no [TEST] prefix)</label> <button class="sec">Send to these test recipients</button></form>
+<form class="inline" method="post" action="/admin/campaigns/${c.id}/test" style="margin-left:12px"><input type="text" name="to" value="${h(await getSetting("test_recipients", "rob@revio.agency"))}" style="width:260px;display:inline-block" title="comma-separated"> from <select name="mailbox_id" style="display:inline-block;width:auto"><option value="">random mailbox</option>${(await all("SELECT id, email FROM mailboxes WHERE site=$1 AND enabled AND smtp_pass IS NOT NULL AND smtp_pass<>'' ORDER BY email", [c.site])).map(m => `<option value="${m.id}">${h(m.email)}</option>`).join("")}</select> <label style="display:inline"><input type="checkbox" name="realistic" value="1"> realistic (step 1 only, no [TEST] prefix)</label> <button class="sec">Send to these test recipients</button></form>
 
 <h2>Steps</h2>
 ${steps.map(s => `<div class="box"><form method="post" action="/admin/steps/${s.id}">
@@ -237,7 +237,9 @@ admin.post("/campaigns/:id/test", async (req, res) => {
   const realistic = !!req.body.realistic;
   let steps = await all("SELECT * FROM steps WHERE campaign_id=$1 ORDER BY position", [c.id]);
   if (realistic) steps = steps.slice(0, 1);
-  const mailbox = await one("SELECT * FROM mailboxes WHERE site=$1 AND enabled AND smtp_pass IS NOT NULL AND smtp_pass<>'' ORDER BY random() LIMIT 1", [c.site]);
+  const mailbox = req.body.mailbox_id
+    ? await one("SELECT * FROM mailboxes WHERE id=$1 AND site=$2 AND enabled AND smtp_pass IS NOT NULL AND smtp_pass<>''", [req.body.mailbox_id, c.site])
+    : await one("SELECT * FROM mailboxes WHERE site=$1 AND enabled AND smtp_pass IS NOT NULL AND smtp_pass<>'' ORDER BY random() LIMIT 1", [c.site]);
   const recipients = String(req.body.to || "").split(/[\s,;]+/).map(s => s.trim()).filter(s => s.includes("@"));
   if (recipients.length) await setSetting("test_recipients", recipients.join(", "));
   if (!mailbox) return redirect(res, `/admin/campaigns/${c.id}`, "Error: no enabled mailbox with a password for this site yet");
