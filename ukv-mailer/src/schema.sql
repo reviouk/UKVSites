@@ -152,3 +152,18 @@ CREATE TABLE IF NOT EXISTS callback_events (
 CREATE INDEX IF NOT EXISTS callback_events_idx ON callback_events(contact_id, callback_date, kind);
 
 ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS warmup_from DATE;  -- NULL = no warm-up schedule
+
+-- Email verification (MillionVerifier bulk API; scripts/verify-emails.mjs)
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS verify_result  TEXT;         -- ok | catch_all | unknown | invalid | disposable | error
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS verify_quality TEXT;         -- good | risky | bad
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS verified_at    TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS contacts_verify_idx ON contacts(verify_result);
+CREATE TABLE IF NOT EXISTS verify_jobs (
+  file_id     TEXT PRIMARY KEY,                     -- MillionVerifier file id
+  file_name   TEXT,
+  emails      INTEGER NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'in_progress',  -- in_progress | finished | imported | error
+  summary     JSONB NOT NULL DEFAULT '{}',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  imported_at TIMESTAMPTZ
+);

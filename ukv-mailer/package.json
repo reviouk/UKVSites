@@ -9,7 +9,8 @@
     "migrate": "node scripts/migrate.mjs",
     "import": "node scripts/import.mjs",
     "seed-mailboxes": "node scripts/seed-mailboxes.mjs",
-    "test-smtp": "node scripts/test-smtp.mjs"
+    "test-smtp": "node scripts/test-smtp.mjs",
+    "verify-emails": "node scripts/verify-emails.mjs"
   },
   "engines": { "node": ">=20" },
   "dependencies": {

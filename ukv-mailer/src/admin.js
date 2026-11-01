@@ -160,6 +160,7 @@ admin.get("/campaigns/:id", async (req, res) => {
      count(*) FILTER (WHERE status='completed')::int AS completed, count(*) FILTER (WHERE status='stopped')::int AS stopped FROM enrolments WHERE campaign_id=$1`, [c.id]);
   const sources = await all(`SELECT data_source, count(*)::int AS n, count(*) FILTER (WHERE status='active' AND NOT instantly_contacted)::int AS fresh,
      count(*) FILTER (WHERE status='active')::int AS active FROM contacts GROUP BY 1 ORDER BY 2 DESC`);
+  const verifyCounts = await all("SELECT verify_result, count(*)::int AS n FROM contacts WHERE status='active' GROUP BY 1 ORDER BY 2 DESC");
   const sampleVars = { first_name: "Jane", last_name: "Smith", company: "Acme Ltd", site_url: SITES[c.site]?.url, site_name: SITES[c.site]?.label, sender_name: "James Whitfield", sender_first_name: "James" };
   const body = `<h1>${h(c.name)} <small class="muted">#${c.id} · ${h(c.site)} · ${c.status}</small></h1>
 <div class="cards"><div class="card"><b>${enrol.total}</b><span>enrolled</span></div><div class="card"><b>${enrol.active}</b><span>queued</span></div><div class="card"><b>${enrol.completed}</b><span>completed</span></div><div class="card"><b>${enrol.stopped}</b><span>stopped (reply/bounce/unsub)</span></div></div>
@@ -189,6 +190,8 @@ ${steps.map(s => `<div class="box"><form method="post" action="/admin/steps/${s.
 <div><label>Max contacts to enrol (blank = all matching)</label><input type="number" name="limit" min="1" placeholder="e.g. 20000"></div></div>
 <label><input type="checkbox" name="skip_instantly" value="1" checked> Skip contacts already emailed by Instantly</label>
 <label><input type="checkbox" name="skip_other" value="1" checked> Skip contacts already enrolled in any other campaign</label>
+<label>Email verification: <select name="verified" style="width:auto;display:inline-block"><option value="ok">verified OK only (recommended)</option><option value="ok_catch_all">verified OK + catch-all</option><option value="any">any, including unverified (not recommended)</option></select>
+<small class="muted">${verifyCounts.map(v => `${h(v.verify_result || "unverified")}: ${v.n}`).join(" · ")} (active contacts; run <code>node scripts/verify-emails.mjs run</code> to verify more)</small></label>
 <label>Split between brands: <select name="split" style="width:auto;display:inline-block"><option value="">no split – take every matching contact</option><option value="even">this campaign takes every 2nd contact (even ids)</option><option value="odd">this campaign takes the other half (odd ids)</option></select> <small>Use "even" on one brand's campaign and "odd" on the other for a 50/50 split of the same list.</small></label>
 <p><button>Enrol</button> <small>Only status=active contacts not on the suppression list are enrolled. Sending starts when the campaign is active.</small></p></form></div>`;
   res.send(page(c.name, body, flashOf(req)));
@@ -221,6 +224,8 @@ admin.post("/campaigns/:id/enrol", async (req, res) => {
   if (req.body.data_source) { params.push(req.body.data_source); where.push(`ct.data_source=$${params.length}`); }
   if (req.body.skip_instantly) where.push("NOT ct.instantly_contacted");
   if (req.body.skip_other) where.push("NOT EXISTS (SELECT 1 FROM enrolments e2 WHERE e2.contact_id=ct.id)");
+  if (req.body.verified === "ok_catch_all") where.push("ct.verify_result IN ('ok','catch_all')");
+  else if (req.body.verified !== "any") where.push("ct.verify_result = 'ok'");
   if (req.body.split === "even") where.push("ct.id % 2 = 0");
   if (req.body.split === "odd") where.push("ct.id % 2 = 1");
   let limit = "";

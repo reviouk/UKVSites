@@ -32,6 +32,7 @@ spreadsheets ─► contacts ─► enrol in campaign ─► paced sender ─►
 | `scripts/seed-mailboxes.mjs` | Upsert the 29 mailboxes (`data/mailboxes.csv`, or a Maildoso export with passwords) |
 | `scripts/sync-instantly.mjs` | Pull Instantly campaigns (as paused campaigns here) and leads (flag already-contacted, suppress replied/bounced/unsubscribed) |
 | `scripts/test-smtp.mjs` | Verify SMTP login for every mailbox |
+| `scripts/verify-emails.mjs` | Bulk email verification via MillionVerifier (`run` = upload, wait, import). Sets `contacts.verify_result`; invalid/disposable become `bounced`. Enrolment defaults to verified-OK only |
 
 ## Sending rules
 
