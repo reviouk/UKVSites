@@ -39,12 +39,8 @@ async function upload() {
   const recheck = Math.max(0, Number(opt["recheck-days"] || 0));
   where.push(recheck > 0 ? `(verified_at IS NULL OR verified_at < now() - interval '${recheck} days')` : "verified_at IS NULL");
   // Skip anything already sitting in an un-imported job.
-  await q("CREATE TEMP TABLE verify_pending(email TEXT)");
-  for (const j of await all("SELECT summary FROM verify_jobs WHERE status<>'imported'")) {
-    const emails = j.summary?.emails || [];
-    if (emails.length) await q("INSERT INTO verify_pending SELECT unnest($1::text[])", [emails]);
-  }
-  where.push("NOT EXISTS (SELECT 1 FROM verify_pending p WHERE p.email=contacts.email)");
+  const pending = (await all("SELECT summary FROM verify_jobs WHERE status<>'imported'")).flatMap(j => j.summary?.emails || []);
+  if (pending.length) { params.push(pending); where.push(`NOT (email = ANY($${params.length}::text[]))`); }
   // Dead domains (no MX, no A) are never worth a credit. Microsoft-hosted contacts go last
   // because routing holds them until a non-Maildoso pool exists; never-contacted first.
   where.push("COALESCE(mail_provider,'') <> 'none'");

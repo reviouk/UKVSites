@@ -112,7 +112,13 @@ export async function tick() {
 
     const { total: sentToday } = await todaysCounts();
     state.sentToday = sentToday;
-    if (!(await getSetting("ramp_started_on", null))) await setSetting("ramp_started_on", nowLocal().dateKey);
+    // Start the ramp clock only when something can really send, not on the first idle tick.
+    if (!(await getSetting("ramp_started_on", null))) {
+      const work = await one(`SELECT 1 FROM enrolments e JOIN campaigns c ON c.id=e.campaign_id
+                               WHERE e.status='active' AND c.status='active' LIMIT 1`);
+      if (!work) { state.lastResult = "nothing enrolled in an active campaign"; return; }
+      await setSetting("ramp_started_on", nowLocal().dateKey);
+    }
     const { total: dailyTotal } = await effectiveDailyTotal();
     const shouldHaveSent = Math.ceil(dailyTotal * (windowElapsed() + 1) / windowMinutes());
     let toSend = Math.min(MAX_PER_TICK, dailyTotal - sentToday, shouldHaveSent - sentToday);
