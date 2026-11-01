@@ -8,6 +8,7 @@ import { cfg, inSendWindow, windowElapsed, windowMinutes, startOfLocalDay, nowLo
 import { pool, q, one, all, getSetting, setSetting } from "./db.js";
 import { buildEmail, contactVars } from "./templates.js";
 import { sendMail } from "./mailer.js";
+import { routes, HOLD } from "./routing.js";
 
 const MAX_PER_TICK = 12;
 
@@ -47,15 +48,15 @@ export async function allowances() {
   return { total, boxes, allowances: out };
 }
 
-/** Which brands still have a mailbox with room today. */
-async function sitesWithCapacity() {
+/** Which "site|pool" combinations still have a mailbox with room today. */
+async function lanesWithCapacity() {
   const { boxes, allowances: al } = await allowances();
   const since = startOfLocalDay();
   const sent = await all("SELECT mailbox_id, count(*)::int n FROM sends WHERE sent_at >= $1 AND status <> 'failed' GROUP BY mailbox_id", [since]);
   const n = Object.fromEntries(sent.map(r => [r.mailbox_id, r.n]));
-  const sites = new Set();
-  for (const m of boxes) if ((n[m.id] || 0) < (al.get(m.id) || 0)) sites.add(m.site);
-  return [...sites];
+  const lanes = new Set();
+  for (const m of boxes) if ((n[m.id] || 0) < (al.get(m.id) || 0)) lanes.add(`${m.site}|${m.pool}`);
+  return [...lanes];
 }       // burst ceiling per minute (1000/day over 9.5h is ~1.75/min)
 let running = false;
 export const state = { lastTick: null, lastResult: "", sentToday: 0 };
@@ -117,12 +118,13 @@ export async function tick() {
     let toSend = Math.min(MAX_PER_TICK, dailyTotal - sentToday, shouldHaveSent - sentToday);
     if (toSend <= 0) { state.lastResult = `on pace (${sentToday}/${dailyTotal})`; return; }
 
-    const sites = await sitesWithCapacity();
-    if (!sites.length) { state.lastResult = `all mailboxes at cap (${sentToday}/${dailyTotal})`; return; }
+    const lanes = await lanesWithCapacity();
+    if (!lanes.length) { state.lastResult = `all mailboxes at cap (${sentToday}/${dailyTotal})`; return; }
+    const route = await routes();                   // provider -> pool | hold
     let sent = 0, skipped = 0;
     const gap = Math.floor(55_000 / (toSend + 1)); // spread this minute's sends out
     for (let i = 0; i < toSend; i++) {
-      const r = await sendOne(sites);
+      const r = await sendOne(lanes, route);
       if (r === "sent") sent++;
       else if (r === "nothing-due" || r === "no-mailbox") { state.lastResult = r; break; }
       else skipped++;
@@ -136,22 +138,31 @@ export async function tick() {
   }
 }
 
-/** Pick one due enrolment, lock it, send it. Returns sent | nothing-due | no-mailbox | skipped */
-async function sendOne(sites) {
+/**
+ * Pick one due enrolment, lock it, send it. Returns sent | nothing-due | no-mailbox | skipped.
+ * `lanes` = "site|pool" combos with capacity today; `route` = provider -> pool (or hold).
+ * The contact's provider (unclassified counts as "other") chooses the pool; held providers
+ * and lanes without capacity are left in the queue untouched.
+ */
+async function sendOne(lanes, route) {
+  const providers = Object.keys(route), poolsFor = providers.map(p => route[p]);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const { rows } = await client.query(`
-      SELECT e.*, c.name AS campaign_name, c.site AS campaign_site, c.daily_cap AS campaign_cap,
+      SELECT e.*, c.name AS campaign_name, c.site AS campaign_site, c.daily_cap AS campaign_cap, r.pool AS send_pool,
              ct.email AS contact_email, ct.first_name, ct.last_name, ct.company, ct.phone, ct.data_source, ct.status AS contact_status
         FROM enrolments e
-        JOIN campaigns c ON c.id = e.campaign_id AND c.status = 'active' AND c.site = ANY($1)
+        JOIN campaigns c ON c.id = e.campaign_id AND c.status = 'active'
         JOIN contacts ct ON ct.id = e.contact_id
+        JOIN unnest($2::text[], $3::text[]) AS r(provider, pool) ON r.provider = COALESCE(ct.mail_provider, 'other')
        WHERE e.status = 'active' AND e.next_due_at <= now()
          AND ct.status = 'active'
+         AND r.pool <> $4
+         AND (c.site || '|' || r.pool) = ANY($1)
          AND NOT EXISTS (SELECT 1 FROM suppressions s WHERE s.email = ct.email)
        ORDER BY e.current_step DESC, e.next_due_at ASC
-       LIMIT 1 FOR UPDATE OF e SKIP LOCKED`, [sites]);
+       LIMIT 1 FOR UPDATE OF e SKIP LOCKED`, [lanes, providers, poolsFor, HOLD]);
     const en = rows[0];
     if (!en) { await client.query("ROLLBACK"); return "nothing-due"; }
 
@@ -233,8 +244,8 @@ async function pickMailbox(client, en) {
   const { rows } = await client.query(`
     SELECT m.*, count(s.id) FILTER (WHERE s.sent_at >= $2 AND s.status <> 'failed')::int AS sent_today
       FROM mailboxes m LEFT JOIN sends s ON s.mailbox_id = m.id
-     WHERE m.enabled AND m.site = $1 AND m.smtp_pass IS NOT NULL AND m.smtp_pass <> ''
-     GROUP BY m.id`, [en.campaign_site, since]);
+     WHERE m.enabled AND m.site = $1 AND m.pool = $3 AND m.smtp_pass IS NOT NULL AND m.smtp_pass <> ''
+     GROUP BY m.id`, [en.campaign_site, since, en.send_pool]);
   if (!rows.length) return null;
   const { allowances: al } = await allowances();
   const eligible = rows.filter(m => m.sent_today < (al.get(m.id) || 0));

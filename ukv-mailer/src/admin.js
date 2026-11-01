@@ -13,6 +13,7 @@ import { importFile } from "./importer.js";
 import { syncConversions, convState } from "./conversions.js";
 import { cbState, recentEvents, tick as callbackTick } from "./callbacks.js";
 import { verifyMailbox } from "./mailer.js";
+import { PROVIDERS, HOLD, routes, pools, providerCounts } from "./routing.js";
 import { escapeHtml as h, toHtml, merge } from "./templates.js";
 
 export const admin = Router();
@@ -65,12 +66,13 @@ admin.get("/", async (req, res) => {
     SELECT (SELECT count(*) FROM contacts)::int AS contacts,
            (SELECT count(*) FROM contacts WHERE status='active')::int AS active,
            (SELECT count(*) FROM enrolments WHERE status='active')::int AS queued,
+           (SELECT count(*) FROM enrolments e JOIN contacts ct ON ct.id=e.contact_id WHERE e.status='active' AND COALESCE(ct.mail_provider,'other') = ANY($1))::int AS held,
            (SELECT count(*) FROM sends WHERE status<>'failed')::int AS sent_all,
            (SELECT count(*) FROM sends WHERE opened_at IS NOT NULL)::int AS opened,
            (SELECT count(*) FROM sends WHERE clicked_at IS NOT NULL)::int AS clicked,
            (SELECT count(*) FROM sends WHERE replied_at IS NOT NULL)::int AS replied,
            (SELECT count(*) FROM sends WHERE status='bounced')::int AS bounced,
-           (SELECT count(*) FROM suppressions)::int AS suppressed`);
+           (SELECT count(*) FROM suppressions)::int AS suppressed`, [Object.entries(await routes()).filter(([, v]) => v === HOLD).map(([k]) => k)]);
   const daily = await all(`
     SELECT to_char(sent_at AT TIME ZONE $1, 'YYYY-MM-DD') AS day, count(*)::int AS sent,
            count(opened_at)::int AS opened, count(clicked_at)::int AS clicked, count(replied_at)::int AS replied
@@ -81,7 +83,7 @@ admin.get("/", async (req, res) => {
 <div class="cards">
   <div class="card"><b>${total} / ${dailyTotal}</b><span>sent today · ${h(ramp.phase)}${ramp.day ? ` · day ${ramp.day}` : ""}</span></div>
   <div class="card"><b class="${paused ? "bad" : inSendWindow() ? "ok" : "muted"}">${paused ? "PAUSED" : inSendWindow() ? "SENDING" : "Outside window"}</b><span>${h(senderState.lastResult || "")}<br>window ${cfg.windowStart}–${cfg.windowEnd} ${cfg.tz}, days ${cfg.sendDays.join(",")}</span></div>
-  <div class="card"><b>${totals.queued}</b><span>contacts queued in active sequences</span></div>
+  <div class="card"><b>${totals.queued}</b><span>contacts queued in active sequences${totals.held ? ` (${totals.held} held by routing)` : ""}</span></div>
   <div class="card"><b>${totals.active} <small>/ ${totals.contacts}</small></b><span>active contacts / total</span></div>
   <div class="card"><b>${totals.sent_all}</b><span>sent all time</span></div>
   <div class="card"><b>${pct(totals.opened, totals.sent_all)}</b><span>opened (${totals.opened}) – noisy</span></div>
@@ -399,17 +401,20 @@ admin.post("/contacts/suppress", async (req, res) => {
 // ---- mailboxes ---------------------------------------------------------------
 admin.get("/mailboxes", async (req, res) => {
   const { perMailbox } = await todaysCounts();
-  const withPass = await all("SELECT id, (smtp_pass IS NOT NULL AND smtp_pass<>'') AS has_pass, warmup_from FROM mailboxes");
+  const withPass = await all("SELECT id, (smtp_pass IS NOT NULL AND smtp_pass<>'') AS has_pass, warmup_from, pool, smtp_host, smtp_port FROM mailboxes");
+  const extra = Object.fromEntries(withPass.map(r => [r.id, r]));
+  for (const m of perMailbox) Object.assign(m, { pool: extra[m.id]?.pool || "maildoso", smtp_host: extra[m.id]?.smtp_host, smtp_port: extra[m.id]?.smtp_port });
   const hp = Object.fromEntries(withPass.map(r => [r.id, r.has_pass]));
   const wf = Object.fromEntries(withPass.map(r => [r.id, r.warmup_from ? new Date(r.warmup_from).toISOString().slice(0, 10) : ""]));
   const { allowances: al, total: dayTotal } = await allowances();
   const wcap = (id) => { const c = warmupCap({ warmup_from: wf[id] || null }); return c === Infinity ? "" : c; };
   const body = `<h1>Mailboxes</h1>
 <p><small>SMTP ${h(cfg.smtp.host)}:${cfg.smtp.port}. Global per-mailbox cap ${cfg.mailboxDailyCap}/day; today's total ${dayTotal} is shared out so warm-up boxes take only their limit and the rest covers the remainder. Warm-up from a date: week 1 = 5/day, week 2 = 10, week 3 = 20, week 4 = 30, then off. Passwords are stored in the database, never shown.</small></p>
-<table><tr><th>Email</th><th>Display name</th><th>Site</th><th>Cap</th><th>Warm-up from</th><th>Allowed today</th><th>Today</th><th>Password</th><th>Enabled</th><th>Last error</th><th></th></tr>
+<table><tr><th>Email</th><th>Display name</th><th>Site</th><th>Pool / SMTP</th><th>Cap</th><th>Warm-up from</th><th>Allowed today</th><th>Today</th><th>Password</th><th>Enabled</th><th>Last error</th><th></th></tr>
 ${perMailbox.map(m => `<tr><form method="post" action="/admin/mailboxes/${m.id}">
 <td>${h(m.email)}</td><td><input type="text" name="display_name" value="${h(m.display_name)}"></td>
 <td><select name="site">${Object.keys(SITES).map(k => `<option ${k === m.site ? "selected" : ""}>${k}</option>`).join("")}</select></td>
+<td><input type="text" name="pool" value="${h(m.pool)}" style="width:90px" title="pool name (routing on Settings)"><br><input type="text" name="smtp_host" value="${h(m.smtp_host || "")}" placeholder="${h(cfg.smtp.host)}" style="width:150px;font-size:12px"><input type="text" name="smtp_port" value="${m.smtp_port || ""}" placeholder="${cfg.smtp.port}" style="width:48px;font-size:12px"></td>
 <td><input type="number" name="daily_cap" value="${m.daily_cap}" min="0" style="width:70px"></td>
 <td><input type="date" name="warmup_from" value="${wf[m.id]}" style="width:140px">${wcap(m.id) !== "" ? ` <small class="muted">${wcap(m.id)}/day</small>` : ""}</td>
 <td>${al.get(m.id) ?? '<span class="muted">—</span>'}</td><td>${m.sent_today}</td>
@@ -420,20 +425,23 @@ ${perMailbox.map(m => `<tr><form method="post" action="/admin/mailboxes/${m.id}"
 </table>
 <h2>Add mailbox</h2><div class="box"><form method="post" action="/admin/mailboxes">
 <div class="row"><div><label>Email</label><input type="text" name="email" required></div><div><label>Display name</label><input type="text" name="display_name" required></div></div>
+<div class="row"><div><label>Pool</label><input type="text" name="pool" value="maildoso"></div><div><label>SMTP host : port (blank = ${h(cfg.smtp.host)}:${cfg.smtp.port})</label><input type="text" name="smtp_host" placeholder="smtp.gmail.com" style="width:60%;display:inline-block"> <input type="text" name="smtp_port" placeholder="587" style="width:30%;display:inline-block"></div></div>
 <div class="row"><div><label>Site</label><select name="site">${Object.keys(SITES).map(k => `<option>${k}</option>`).join("")}</select></div><div><label>SMTP password</label><input type="password" name="smtp_pass" autocomplete="new-password"></div></div>
 <p><button>Add</button></p></form></div>`;
   res.send(page("Mailboxes", body, flashOf(req)));
 });
 admin.post("/mailboxes", async (req, res) => {
   const email = String(req.body.email || "").trim().toLowerCase();
-  await q("INSERT INTO mailboxes(email,display_name,domain,site,smtp_pass) VALUES($1,$2,$3,$4,NULLIF($5,'')) ON CONFLICT(email) DO NOTHING",
-    [email, req.body.display_name.trim(), email.split("@")[1], req.body.site, req.body.smtp_pass || ""]);
+  await q("INSERT INTO mailboxes(email,display_name,domain,site,smtp_pass,pool,smtp_host,smtp_port) VALUES($1,$2,$3,$4,NULLIF($5,''),$6,NULLIF($7,''),NULLIF($8,'')::int) ON CONFLICT(email) DO NOTHING",
+    [email, req.body.display_name.trim(), email.split("@")[1], req.body.site, req.body.smtp_pass || "", String(req.body.pool || "maildoso").trim() || "maildoso", String(req.body.smtp_host || "").trim(), String(req.body.smtp_port || "").replace(/[^0-9]/g, "")]);
   redirect(res, "/admin/mailboxes", `Added ${email}`);
 });
 admin.post("/mailboxes/:id", async (req, res) => {
   await q(`UPDATE mailboxes SET display_name=$2, site=$3, daily_cap=$4, enabled=$5, last_error = CASE WHEN $5 THEN NULL ELSE last_error END,
-           smtp_pass = CASE WHEN $6<>'' THEN $6 ELSE smtp_pass END, warmup_from = NULLIF($7,'')::date WHERE id=$1`,
-    [req.params.id, req.body.display_name.trim(), req.body.site, Number(req.body.daily_cap) || 0, !!req.body.enabled, req.body.smtp_pass || "", String(req.body.warmup_from || "").trim()]);
+           smtp_pass = CASE WHEN $6<>'' THEN $6 ELSE smtp_pass END, warmup_from = NULLIF($7,'')::date,
+           pool = $8, smtp_host = NULLIF($9,''), smtp_port = NULLIF($10,'')::int WHERE id=$1`,
+    [req.params.id, req.body.display_name.trim(), req.body.site, Number(req.body.daily_cap) || 0, !!req.body.enabled, req.body.smtp_pass || "", String(req.body.warmup_from || "").trim(),
+     String(req.body.pool || "maildoso").trim() || "maildoso", String(req.body.smtp_host || "").trim(), String(req.body.smtp_port || "").replace(/[^0-9]/g, "")]);
   redirect(res, "/admin/mailboxes", "Saved");
 });
 admin.post("/mailboxes/:id/verify", async (req, res) => {
@@ -461,6 +469,7 @@ admin.get("/settings", async (req, res) => {
   const dailyTotal = await getSetting("daily_total", cfg.dailyTotal);
   const ramp = await effectiveDailyTotal();
   const g = async (k, d) => h(await getSetting(k, d));
+  const [rt, poolList, pc] = [await routes(), await pools(), await providerCounts()];
   const body = `<h1>Settings</h1><div class="box"><form method="post" action="/admin/settings">
 <p><b>Today's effective limit: ${ramp.total}/day</b> — ${h(ramp.phase)}${ramp.day ? `, day ${ramp.day} since first send (${await g("ramp_started_on", "")})` : " (ramp starts on the first send)"}</p>
 <div class="row"><div><label>Target daily total</label><input type="number" name="daily_total" value="${h(dailyTotal)}" min="0"></div>
@@ -469,6 +478,12 @@ admin.get("/settings", async (req, res) => {
 <div><label>Ramp: increase per day after the hold</label><input type="number" name="ramp_step" value="${await g("ramp_step", 100)}" min="1"></div></div>
 <label>Ramp start date (YYYY-MM-DD, blank = set automatically on first send)</label><input type="text" name="ramp_started_on" value="${await g("ramp_started_on", "")}" style="width:200px">
 <p><button>Save</button></p></form></div>
+<div class="box"><h2 style="margin-top:0">Routing by recipient mail provider</h2>
+<p><small>Each contact is tagged with the provider behind their domain's MX record (<code>node scripts/classify-mx.mjs</code>). Microsoft 365 / Outlook junk everything from Maildoso's shared relay (no reverse DNS), so those contacts are <b>held</b> until a pool of mailboxes on different infrastructure exists. Pools come from the Mailboxes page.</small></p>
+<form method="post" action="/admin/routing"><table><tr><th>Provider</th><th>Active contacts</th><th>Send from pool</th></tr>
+${PROVIDERS.map(p => `<tr><td>${p}${p === "other" ? ' <small class="muted">(incl. unclassified)</small>' : ""}</td><td>${(pc.find(r => r.provider === p)?.n || 0) + (p === "other" ? (pc.find(r => r.provider === "unclassified")?.n || 0) : 0)}</td>
+<td><select name="route_${p}" style="width:auto">${[HOLD, ...poolList].map(x => `<option value="${h(x)}" ${rt[p] === x ? "selected" : ""}>${x === HOLD ? "hold (do not send)" : h(x)}</option>`).join("")}</select></td></tr>`).join("")}
+</table><p><button>Save routing</button></p></form></div>
 <div class="box"><b>From environment</b><pre>send window   ${cfg.windowStart}–${cfg.windowEnd} ${cfg.tz}, days ${cfg.sendDays.join(",")}
 mailbox cap   ${cfg.mailboxDailyCap}/day
 SMTP          ${cfg.smtp.host}:${cfg.smtp.port}
@@ -478,6 +493,14 @@ Base URL      ${cfg.baseUrl}
 Tracking URLs ${Object.entries(SITES).map(([k, s]) => `${k}=${s.trackUrl}`).join("  ")}
 Track step 1  ${cfg.trackStep1 ? "yes" : "no (plain 1:1 first touch)"}</pre><small>Change these in Render → Environment; the service restarts automatically.</small></div>`;
   res.send(page("Settings", body, flashOf(req)));
+});
+admin.post("/routing", async (req, res) => {
+  const poolList = new Set([HOLD, ...(await pools())]);
+  for (const p of PROVIDERS) {
+    const v = String(req.body[`route_${p}`] || HOLD);
+    await setSetting(`route_${p}`, poolList.has(v) ? v : HOLD);
+  }
+  redirect(res, "/admin/settings", "Routing saved");
 });
 admin.post("/settings", async (req, res) => {
   await setSetting("daily_total", Math.max(0, Number(req.body.daily_total) || 0));

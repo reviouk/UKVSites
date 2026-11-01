@@ -4,14 +4,20 @@ import { cfg } from "./config.js";
 
 const transports = new Map(); // mailbox.id -> transporter
 
+/** Per-mailbox SMTP endpoint (pool-specific), falling back to the SMTP_HOST/SMTP_PORT env. */
+export function smtpFor(mailbox) {
+  return { host: mailbox.smtp_host || cfg.smtp.host, port: Number(mailbox.smtp_port) || cfg.smtp.port };
+}
+
 export function transportFor(mailbox) {
-  const key = `${mailbox.id}:${mailbox.smtp_pass}`;
+  const { host, port } = smtpFor(mailbox);
+  const key = `${mailbox.id}:${host}:${port}:${mailbox.smtp_pass}`;
   if (!transports.has(key)) {
     transports.set(key, nodemailer.createTransport({
-      host: cfg.smtp.host,
-      port: cfg.smtp.port,
-      secure: cfg.smtp.port === 465,          // 587 => STARTTLS
-      requireTLS: cfg.smtp.port !== 465,
+      host,
+      port,
+      secure: port === 465,          // 587 => STARTTLS
+      requireTLS: port !== 465,
       auth: { user: mailbox.email, pass: mailbox.smtp_pass },
       pool: true, maxConnections: 1, maxMessages: 20,
       connectionTimeout: 20000, socketTimeout: 30000,
@@ -47,8 +53,9 @@ export async function sendMail({ mailbox, to, subject, html, text, unsubUrl, inR
 }
 
 export async function verifyMailbox(mailbox) {
+  const { host, port } = smtpFor(mailbox);
   const t = nodemailer.createTransport({
-    host: cfg.smtp.host, port: cfg.smtp.port, secure: cfg.smtp.port === 465, requireTLS: cfg.smtp.port !== 465,
+    host, port, secure: port === 465, requireTLS: port !== 465,
     auth: { user: mailbox.email, pass: mailbox.smtp_pass }, connectionTimeout: 15000,
     tls: process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0" ? { rejectUnauthorized: false } : undefined,
   });

@@ -158,6 +158,23 @@ ALTER TABLE contacts ADD COLUMN IF NOT EXISTS verify_result  TEXT;         -- ok
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS verify_quality TEXT;         -- good | risky | bad
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS verified_at    TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS contacts_verify_idx ON contacts(verify_result);
+-- Recipient mail provider (from the domain's MX; scripts/classify-mx.mjs) and per-provider routing.
+-- Microsoft 365 / Outlook junk anything from Maildoso's relay (no PTR, in-addr.arpa HELO), so
+-- contacts are routed to a mailbox *pool* per provider (settings route_<provider> = pool | hold).
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS mail_provider TEXT;       -- microsoft | google | yahoo | apple | gateway | other | none
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS mx_host TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS mx_checked_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS contacts_provider_idx ON contacts(mail_provider);
+CREATE TABLE IF NOT EXISTS mx_cache (
+  domain     TEXT PRIMARY KEY,
+  mx_host    TEXT,
+  provider   TEXT NOT NULL,
+  checked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS pool      TEXT NOT NULL DEFAULT 'maildoso';  -- which sending infrastructure
+ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS smtp_host TEXT;                              -- NULL = SMTP_HOST env
+ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS smtp_port INT;                               -- NULL = SMTP_PORT env
+
 CREATE TABLE IF NOT EXISTS verify_jobs (
   file_id     TEXT PRIMARY KEY,                     -- MillionVerifier file id
   file_name   TEXT,
