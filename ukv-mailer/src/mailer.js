@@ -40,7 +40,7 @@ export async function sendMail({ mailbox, to, subject, html, text, unsubUrl, inR
     headers: {
       "List-Unsubscribe": `<${unsubUrl}>`,
       "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-      "X-Mailer": "ukv-mailer",
+      // No X-Mailer: Gmail surfaces it as "Using ukv-mailer", an automation tell.
     },
   });
   return { messageId: info.messageId || messageId };

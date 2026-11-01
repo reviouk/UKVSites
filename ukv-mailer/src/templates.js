@@ -75,18 +75,20 @@ export function toText(html) {
 export function buildEmail({ step, contact, mailbox, site, token, vars }) {
   const subject = merge(step.subject, vars);
   let html = merge(toHtml(step.body_html), vars);
+  const base = (SITES[site] && SITES[site].trackUrl) || cfg.baseUrl;
+  const tracked = step.position > 1 || cfg.trackStep1;
 
   // Rewrite every http(s) link through the click tracker (skip mailto/unsubscribe).
-  html = html.replace(/href="(https?:\/\/[^"]+)"/gi, (_, url) =>
-    `href="${cfg.baseUrl}/c/${token}?u=${encodeURIComponent(url)}"`);
+  if (tracked) html = html.replace(/href="(https?:\/\/[^"]+)"/gi, (_, url) =>
+    `href="${base}/c/${token}?u=${encodeURIComponent(url)}"`);
 
-  const unsubUrl = `${cfg.baseUrl}/u/${token}`;
+  const unsubUrl = `${base}/u/${token}`;
   const footer = `
 <p style="margin-top:28px;font-size:12px;line-height:1.5;color:#777">
 Whisky cask ownership is a long-term investment in an unregulated market: it is not overseen by the FCA and is not covered by the Financial Services Compensation Scheme. The value of a cask can go down as well as up. This email is general information, not financial or tax advice.<br>
 You are receiving this because your details are held on a marketing list. If you would rather not hear from us again, <a href="${unsubUrl}" style="color:#777">unsubscribe here</a> and we will remove you immediately.
-</p>
-<img src="${cfg.baseUrl}/o/${token}.gif" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0">`;
+</p>${tracked ? `
+<img src="${base}/o/${token}.gif" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0">` : ""}`;
 
   // Preheader: hidden preview text shown by inbox clients next to the subject.
   // Hidden preheaders trip SpamAssassin's FONT_INVIS_MSGID (+2.5) via Maildoso's relay, so

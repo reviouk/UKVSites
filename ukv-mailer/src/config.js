@@ -32,6 +32,16 @@ export const SITES = {
   investchronicles: { label: "The Invest Chronicle", url: "https://investchronicles.com", leadSource: "investchronicles" },
   marketwatcher:    { label: "Market Watcher",    url: "https://marketwatcher.co.uk",  leadSource: "Marketwatcher" },
 };
+// Tracking links (click redirect, open pixel, unsubscribe) are served from a brand
+// subdomain (TRACK_URL_INVESTCHRONICLES / TRACK_URL_MARKETWATCHER, e.g.
+// https://go.investchronicles.com -> CNAME to the Render service) rather than the
+// shared *.onrender.com host, which inbox filters score as throwaway hosting.
+for (const [key, s] of Object.entries(SITES)) {
+  s.trackUrl = String(env(`TRACK_URL_${key.toUpperCase()}`, cfg.baseUrl)).replace(/\/$/, "");
+}
+// Step 1 goes out with no click rewriting and no open pixel so the first touch reads
+// as a plain 1:1 email (the unsubscribe link stays). Set TRACK_STEP1=true to track it.
+cfg.trackStep1 = bool("TRACK_STEP1", false);
 
 /** Wall-clock in the configured timezone: { day 0-6, minutes since midnight, dateKey YYYY-MM-DD } */
 export function nowLocal(d = new Date()) {

@@ -467,7 +467,9 @@ mailbox cap   ${cfg.mailboxDailyCap}/day
 SMTP          ${cfg.smtp.host}:${cfg.smtp.port}
 IMAP          ${cfg.imap.host || "(not set)"}:${cfg.imap.port} as ${cfg.imap.user || "(not set)"} every ${cfg.imap.pollMinutes} min
 HubSpot       ${cfg.hubspot.enabled && cfg.hubspot.token ? "enabled" : "disabled"}
-Base URL      ${cfg.baseUrl}</pre><small>Change these in Render → Environment; the service restarts automatically.</small></div>`;
+Base URL      ${cfg.baseUrl}
+Tracking URLs ${Object.entries(SITES).map(([k, s]) => `${k}=${s.trackUrl}`).join("  ")}
+Track step 1  ${cfg.trackStep1 ? "yes" : "no (plain 1:1 first touch)"}</pre><small>Change these in Render → Environment; the service restarts automatically.</small></div>`;
   res.send(page("Settings", body, flashOf(req)));
 });
 admin.post("/settings", async (req, res) => {
