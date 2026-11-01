@@ -145,6 +145,12 @@ admin.post("/campaigns", async (req, res) => {
   redirect(res, `/admin/campaigns/${c.id}`, "Campaign created (paused). Add steps and enrol contacts, then activate.");
 });
 
+admin.post("/campaigns/:id/pool", async (req, res) => {
+  const v = String(req.body.send_pool || "").trim();
+  const ok = v && await one("SELECT 1 FROM mailboxes m JOIN campaigns c ON c.site=m.site WHERE c.id=$1 AND m.pool=$2 LIMIT 1", [req.params.id, v]);
+  await q("UPDATE campaigns SET send_pool=$2 WHERE id=$1", [req.params.id, ok ? v : null]);
+  redirect(res, `/admin/campaigns/${req.params.id}`, ok ? `Campaign sends only from the ${v} pool` : "Campaign uses provider routing");
+});
 admin.post("/campaigns/:id/status", async (req, res) => {
   const status = ["active", "paused", "finished"].includes(req.body.status) ? req.body.status : "paused";
   await q("UPDATE campaigns SET status=$2 WHERE id=$1", [req.params.id, status]);
@@ -169,6 +175,8 @@ admin.get("/campaigns/:id", async (req, res) => {
 <form class="inline" method="post" action="/admin/campaigns/${c.id}/status"><input type="hidden" name="status" value="${c.status === "active" ? "paused" : "active"}"><button>${c.status === "active" ? "Pause campaign" : "Activate campaign"}</button></form>
 <form class="inline" method="post" action="/admin/campaigns/${c.id}/test" style="margin-left:12px"><input type="text" name="to" value="${h(await getSetting("test_recipients", "rob@revio.agency"))}" style="width:260px;display:inline-block" title="comma-separated"> from <select name="mailbox_id" style="display:inline-block;width:auto"><option value="">random mailbox</option>${(await all("SELECT id, email FROM mailboxes WHERE site=$1 AND enabled AND smtp_pass IS NOT NULL AND smtp_pass<>'' ORDER BY email", [c.site])).map(m => `<option value="${m.id}">${h(m.email)}</option>`).join("")}</select> <label style="display:inline"><input type="checkbox" name="realistic" value="1"> realistic (step 1 only, no [TEST] prefix)</label> <button class="sec">Send to these test recipients</button></form>
 
+<form class="inline" method="post" action="/admin/campaigns/${c.id}/pool" style="display:block;margin-top:10px">Send from: <select name="send_pool" style="width:auto;display:inline-block"><option value="">pool set by provider routing</option>${[...new Set((await all("SELECT DISTINCT pool FROM mailboxes WHERE site=$1", [c.site])).map(r => r.pool))].map(p => `<option value="${h(p)}" ${c.send_pool === p ? "selected" : ""}>only the ${h(p)} pool</option>`).join("")}</select> <button class="sec">Save</button></form>
+
 <h2>Steps</h2>
 ${steps.map(s => `<div class="box"><form method="post" action="/admin/steps/${s.id}">
 <div class="row"><div><label>Step ${s.position} subject <small>(leave blank on follow-ups to send as "Re: step 1 subject")</small></label><input type="text" name="subject" value="${h(s.subject)}"></div>
@@ -192,6 +200,7 @@ ${steps.map(s => `<div class="box"><form method="post" action="/admin/steps/${s.
 <div><label>Max contacts to enrol (blank = all matching)</label><input type="number" name="limit" min="1" placeholder="e.g. 20000"></div></div>
 <label><input type="checkbox" name="skip_instantly" value="1" checked> Skip contacts already emailed by Instantly</label>
 <label><input type="checkbox" name="skip_other" value="1" checked> Skip contacts already enrolled in any other campaign</label>
+<label>Mail provider: <select name="provider" style="width:auto;display:inline-block"><option value="non_microsoft">everyone except Microsoft (recommended)</option><option value="">all providers</option>${PROVIDERS.map(p => `<option value="${p}">${p} only</option>`).join("")}</select></label>
 <label>Email verification: <select name="verified" style="width:auto;display:inline-block"><option value="ok">verified OK only (recommended)</option><option value="ok_catch_all">verified OK + catch-all</option><option value="any">any, including unverified (not recommended)</option></select>
 <small class="muted">${verifyCounts.map(v => `${h(v.verify_result || "unverified")}: ${v.n}`).join(" · ")} (active contacts; run <code>node scripts/verify-emails.mjs run</code> to verify more)</small></label>
 <label>Split between brands: <select name="split" style="width:auto;display:inline-block"><option value="">no split – take every matching contact</option><option value="even">this campaign takes every 2nd contact (even ids)</option><option value="odd">this campaign takes the other half (odd ids)</option></select> <small>Use "even" on one brand's campaign and "odd" on the other for a 50/50 split of the same list.</small></label>
@@ -226,6 +235,8 @@ admin.post("/campaigns/:id/enrol", async (req, res) => {
   if (req.body.data_source) { params.push(req.body.data_source); where.push(`ct.data_source=$${params.length}`); }
   if (req.body.skip_instantly) where.push("NOT ct.instantly_contacted");
   if (req.body.skip_other) where.push("NOT EXISTS (SELECT 1 FROM enrolments e2 WHERE e2.contact_id=ct.id)");
+  if (req.body.provider === "non_microsoft") where.push("COALESCE(ct.mail_provider,'other') <> 'microsoft'");
+  else if (PROVIDERS.includes(req.body.provider)) { params.push(req.body.provider); where.push(`COALESCE(ct.mail_provider,'other') = $${params.length}`); }
   if (req.body.verified === "ok_catch_all") where.push("ct.verify_result IN ('ok','catch_all')");
   else if (req.body.verified !== "any") where.push("ct.verify_result = 'ok'");
   if (req.body.split === "even") where.push("ct.id % 2 = 0");

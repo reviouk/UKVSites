@@ -171,6 +171,9 @@ CREATE TABLE IF NOT EXISTS mx_cache (
   provider   TEXT NOT NULL,
   checked_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Optional: a campaign sends only from this pool, whatever the provider route says.
+-- A provider routed to "hold" stays held regardless.
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS send_pool TEXT;
 ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS pool      TEXT NOT NULL DEFAULT 'maildoso';  -- which sending infrastructure
 ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS smtp_host TEXT;                              -- NULL = SMTP_HOST env
 ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS smtp_port INT;                               -- NULL = SMTP_PORT env

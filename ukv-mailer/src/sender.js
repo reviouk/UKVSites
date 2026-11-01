@@ -156,7 +156,7 @@ async function sendOne(lanes, route) {
   try {
     await client.query("BEGIN");
     const { rows } = await client.query(`
-      SELECT e.*, c.name AS campaign_name, c.site AS campaign_site, c.daily_cap AS campaign_cap, r.pool AS send_pool,
+      SELECT e.*, c.name AS campaign_name, c.site AS campaign_site, c.daily_cap AS campaign_cap, COALESCE(c.send_pool, r.pool) AS send_pool,
              ct.email AS contact_email, ct.first_name, ct.last_name, ct.company, ct.phone, ct.data_source, ct.status AS contact_status
         FROM enrolments e
         JOIN campaigns c ON c.id = e.campaign_id AND c.status = 'active'
@@ -165,7 +165,7 @@ async function sendOne(lanes, route) {
        WHERE e.status = 'active' AND e.next_due_at <= now()
          AND ct.status = 'active'
          AND r.pool <> $4
-         AND (c.site || '|' || r.pool) = ANY($1)
+         AND (c.site || '|' || COALESCE(c.send_pool, r.pool)) = ANY($1)
          AND NOT EXISTS (SELECT 1 FROM suppressions s WHERE s.email = ct.email)
        ORDER BY e.current_step DESC, e.next_due_at ASC
        LIMIT 1 FOR UPDATE OF e SKIP LOCKED`, [lanes, providers, poolsFor, HOLD]);
