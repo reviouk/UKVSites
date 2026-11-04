@@ -76,10 +76,11 @@ export function buildEmail({ step, contact, mailbox, site, token, vars }) {
   const subject = merge(step.subject, vars);
   let html = merge(toHtml(step.body_html), vars);
   const base = (SITES[site] && SITES[site].trackUrl) || cfg.baseUrl;
-  const tracked = step.position > 1 || cfg.trackStep1;
+  const tracked = step.position > 1 || cfg.trackStep1;              // open pixel
+  const trackClicks = tracked || cfg.trackStep1Clicks;              // link rewriting
 
   // Rewrite every http(s) link through the click tracker (skip mailto/unsubscribe).
-  if (tracked) html = html.replace(/href="(https?:\/\/[^"]+)"/gi, (_, url) =>
+  if (trackClicks) html = html.replace(/href="(https?:\/\/[^"]+)"/gi, (_, url) =>
     `href="${base}/c/${token}?u=${encodeURIComponent(url)}"`);
 
   const unsubUrl = `${base}/u/${token}`;

@@ -39,9 +39,11 @@ export const SITES = {
 for (const [key, s] of Object.entries(SITES)) {
   s.trackUrl = String(env(`TRACK_URL_${key.toUpperCase()}`, cfg.baseUrl)).replace(/\/$/, "");
 }
-// Step 1 goes out with no click rewriting and no open pixel so the first touch reads
-// as a plain 1:1 email (the unsubscribe link stays). Set TRACK_STEP1=true to track it.
+// Step 1 goes out with no open pixel so the first touch reads as a plain 1:1 email.
+// Its links are click-tracked through the brand subdomain (so clicks reach HubSpot)
+// unless TRACK_STEP1_CLICKS=false. TRACK_STEP1=true adds the open pixel as well.
 cfg.trackStep1 = bool("TRACK_STEP1", false);
+cfg.trackStep1Clicks = cfg.trackStep1 || bool("TRACK_STEP1_CLICKS", true);
 
 /** Wall-clock in the configured timezone: { day 0-6, minutes since midnight, dateKey YYYY-MM-DD } */
 export function nowLocal(d = new Date()) {
