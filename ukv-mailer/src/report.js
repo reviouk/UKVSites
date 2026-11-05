@@ -134,7 +134,7 @@ const METRIC = {
   sent:         { name: "Emails sent",       color: "#c8892b", tint: "#f8ecd8" },
   replies:      { name: "Replies",           color: "#2e7d4f", tint: "#dff0e5" },
   clicks:       { name: "Link clicks",       color: "#2c5fa8", tint: "#dfe8f6" },
-  enquiries:    { name: "Website enquiries", color: "#8a3b6e", tint: "#f3e0ec" },
+  enquiries:    { name: "Form completions", color: "#8a3b6e", tint: "#f3e0ec" },
   bounced:      { name: "Bounced",           color: "#b5452f", tint: "#f8e1dc" },
   unsubscribes: { name: "Unsubscribed",      color: "#6b7280", tint: "#eceef1" },
 };
@@ -154,8 +154,8 @@ const svg = (name, size = 18) => `<svg width="${size}" height="${size}" viewBox=
 
 function notes(r) {
   const list = [
-    "Open tracking is switched off on purpose: tracking pixels push cold email towards spam folders, and open figures are unreliable because Apple Mail and corporate filters load images automatically. Replies, link clicks and website enquiries are the measures that matter.",
-    "Website enquiries are HubSpot form submissions made by people we emailed, after the email reached them. They are checked hourly.",
+    "Open tracking is switched off on purpose: tracking pixels push cold email towards spam folders, and open figures are unreliable because Apple Mail and corporate filters load images automatically. Replies, link clicks and form completions are the measures that matter.",
+    "Form completions are HubSpot website form submissions (enquiries, guide downloads, call-back requests) made by people we emailed, after the email reached them. Completion rate = form completions ÷ people who clicked through. Checked hourly.",
     "Replies exclude bounces and out-of-office auto-replies where these can be recognised.",
   ];
   if (!r.outside.connected) list.push(r.outside.configured
@@ -271,7 +271,7 @@ footer{color:var(--muted);font-size:12px;margin-top:26px;text-align:center}
  <div class="kpis" id="kpis"></div>
  <section><div class="sec-h"><h3>By brand</h3></div><div class="split" id="split"></div></section>
  <section class="card"><div class="sec-h"><h3>Daily trend</h3><div class="seg" id="metric" role="group" aria-label="Chart metric">
-  <button data-m="sent">Sent</button><button data-m="replies">Replies</button><button data-m="clicks">Clicks</button><button data-m="enquiries">Enquiries</button><button data-m="bounced">Bounces</button></div></div>
+  <button data-m="sent">Sent</button><button data-m="replies">Replies</button><button data-m="clicks">Clicks</button><button data-m="enquiries">Form completions</button><button data-m="bounced">Bounces</button></div></div>
   <svg class="chart" id="chart" role="img" aria-label="Daily chart"></svg><div class="legend" id="legend"></div></section>
  <section class="card"><div class="sec-h"><h3>Day by day</h3></div><div class="tbl" id="table"></div></section>
  <section><div class="notes">${notes(r).map(x => `<p>${svg("info", 16)}<span>${h(x)}</span></p>`).join("")}</div></section>
@@ -303,7 +303,7 @@ function render(){
   $("#dates").classList.toggle("on",st.r==="custom");$("#dfrom").value=f;$("#dto").value=t;$("#dfrom").min=$("#dto").min=first;$("#dfrom").max=$("#dto").max=D.today;
   $("#ptitle").textContent=f===t?nice(f,{weekday:"long",day:"numeric",month:"long"}):nice(f,{day:"numeric",month:"short"})+" – "+nice(t,{day:"numeric",month:"short",year:"numeric"});
   $("#psub").textContent=(st.b==="all"?"All brands":D.brands.find(b=>b.key===st.b).name)+(t===D.today?" · today's figures are so far":"");
-  const sub={sent:rows.length+" day"+(rows.length===1?"":"s"),replies:pct(s.replies,s.sent)+" reply rate",clicks:pct(s.clicks,s.sent)+" click rate",enquiries:pct(s.enquiries,s.sent)+" of emails sent",bounced:pct(s.bounced,s.sent)+" bounce rate",unsubscribes:pct(s.unsubscribes,s.sent)+" of emails sent"};
+  const sub={sent:rows.length+" day"+(rows.length===1?"":"s"),replies:pct(s.replies,s.sent)+" reply rate",clicks:pct(s.clicks,s.sent)+" click rate",enquiries:(s.clicks?pct(s.enquiries,s.clicks)+" completion rate · ":"")+pct(s.enquiries,s.sent)+" of emails",bounced:pct(s.bounced,s.sent)+" bounce rate",unsubscribes:pct(s.unsubscribes,s.sent)+" of emails sent"};
   $("#kpis").innerHTML=KEYS.map((k,i)=>{const m=D.metrics[k];return '<div class="kpi" style="--c:'+m.color+';--t:'+m.tint+';animation-delay:'+(i*50)+'ms"><div class="ic">'+m.icon+'</div><div class="v num">'+fmt(s[k])+'</div><div class="l">'+m.name+'</div><div class="s">'+sub[k]+'</div></div>'}).join("");
   const all=sum(rows,D.brands.map(b=>b.key));
   $("#split").innerHTML=D.brands.filter(b=>bk.includes(b.key)).map(b=>{const x=sum(rows,[b.key]);const sh=all.sent?100*x.sent/all.sent:0;
@@ -333,7 +333,7 @@ function chart(rows,bk){
 function table(rows,bk,s){
   const ks=["sent","replies","clicks","enquiries","bounced","unsubscribes"];
   const chip=(k,v)=>v&&k!=="sent"?'<span class="chip" style="--c:'+D.metrics[k].color+';--t:'+D.metrics[k].tint+'">'+fmt(v)+'</span>':fmt(v);
-  let hb='<tr><th>Day</th>'+ks.map(k=>'<th>'+D.metrics[k].name.replace("Website ","").replace("Emails ","")+'</th>').join("")+'</tr>';
+  let hb='<tr><th>Day</th>'+ks.map(k=>'<th>'+D.metrics[k].name.replace("Emails ","")+'</th>').join("")+'</tr>';
   const body=rows.slice().reverse().map(d=>{const x=sum([d],bk);return '<tr class="'+(x.sent?"":"zero")+'"><td>'+nice(d.day)+(d.day===D.today?' <span style="color:var(--muted);font-size:12px">so far</span>':'')+'</td>'+ks.map(k=>'<td>'+chip(k,x[k])+'</td>').join("")+'</tr>'}).join("");
   $("#table").innerHTML='<table>'+hb+body+'<tr class="tot"><td>Total</td>'+ks.map(k=>'<td>'+fmt(s[k])+'</td>').join("")+'</tr></table>';
 }
@@ -375,18 +375,18 @@ export async function renderEmail(dayKey = yesterdayKey()) {
 <tr><td style="background:#f7f3ec;padding:14px 6px 4px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr>${kpi("sent", "across all brands")}${kpi("replies", pct(day.total.replies, day.total.sent) + " reply rate")}</tr>
-<tr>${kpi("clicks", pct(day.total.clicks, day.total.sent) + " click rate")}${kpi("enquiries", "HubSpot form fills")}</tr>
+<tr>${kpi("clicks", pct(day.total.clicks, day.total.sent) + " click rate")}${kpi("enquiries", day.total.clicks ? pct(day.total.enquiries, day.total.clicks) + " completion rate" : "HubSpot website forms")}</tr>
 <tr>${kpi("bounced", pct(day.total.bounced, day.total.sent) + " bounce rate")}${kpi("unsubscribes", "opted out")}</tr>
 </table></td></tr>
 <tr><td style="padding:10px 6px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fffdf9;border:1px solid #e7dfd2;border-radius:10px">
-<tr><th align="left" style="padding:8px 12px;font:600 10px ${sans};letter-spacing:.06em;text-transform:uppercase;color:#857b6e;border-bottom:1px solid #e7dfd2">By brand</th>${th("Sent")}${th("Replies")}${th("Clicks")}${th("Enq.")}</tr>
+<tr><th align="left" style="padding:8px 12px;font:600 10px ${sans};letter-spacing:.06em;text-transform:uppercase;color:#857b6e;border-bottom:1px solid #e7dfd2">By brand</th>${th("Sent")}${th("Replies")}${th("Clicks")}${th("Forms")}</tr>
 ${BRANDS.map(brandRow).join("")}</table></td></tr>
 ${link ? `<tr><td align="center" style="padding:22px 6px 6px"><a href="${h(link)}" style="display:inline-block;background:#c8892b;color:#16130f;font:600 14px ${sans};text-decoration:none;padding:12px 22px;border-radius:999px">Open the full report &rarr;</a></td></tr>` : ""}
 <tr><td style="padding:16px 10px 4px;font:12px/1.5 ${sans};color:#857b6e">${h(notes(d)[0])}</td></tr>
 </table></td></tr></table></body></html>`;
   const text = [`Email campaign report: ${nice(dayKey, { weekday: "long", day: "numeric", month: "long" })}`, "",
-    ...BRANDS.map(b => `${label(b)}: ${n(day.brands[b].sent)} sent, ${n(day.brands[b].replies)} replies, ${n(day.brands[b].clicks)} clicks, ${n(day.brands[b].enquiries)} enquiries`),
-    `Total: ${n(day.total.sent)} sent, ${n(day.total.replies)} replies, ${n(day.total.clicks)} clicks, ${n(day.total.enquiries)} enquiries, ${n(day.total.bounced)} bounced`,
+    ...BRANDS.map(b => `${label(b)}: ${n(day.brands[b].sent)} sent, ${n(day.brands[b].replies)} replies, ${n(day.brands[b].clicks)} clicks, ${n(day.brands[b].enquiries)} form completions`),
+    `Total: ${n(day.total.sent)} sent, ${n(day.total.replies)} replies, ${n(day.total.clicks)} clicks, ${n(day.total.enquiries)} form completions, ${n(day.total.bounced)} bounced`,
     link ? `\nFull report: ${link}` : ""].join("\n");
   return { subject, html, text, totalSent: day.total.sent };
 }
