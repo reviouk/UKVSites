@@ -15,6 +15,7 @@ import { cbState, recentEvents, tick as callbackTick } from "./callbacks.js";
 import { verifyMailbox } from "./mailer.js";
 import { PROVIDERS, HOLD, routes, pools, providerCounts } from "./routing.js";
 import { escapeHtml as h, toHtml, merge } from "./templates.js";
+import { reportCfg, reportState, renderEmail, sendReportEmail, emailReady, yesterdayKey } from "./report.js";
 
 export const admin = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
@@ -49,7 +50,7 @@ form.inline{display:inline}.row{display:grid;grid-template-columns:1fr 1fr;gap:1
 pre{background:#f0f2f5;padding:10px;overflow:auto;font-size:12px}
 </style></head><body>
 <header><span class="brand">UKV MAILER</span>
-<a href="/admin">Dashboard</a><a href="/admin/campaigns">Campaigns</a><a href="/admin/stats">Stats</a><a href="/admin/contacts">Contacts</a><a href="/admin/mailboxes">Mailboxes</a><a href="/admin/replies">Replies</a><a href="/admin/callbacks">Call-backs</a><a href="/admin/settings">Settings</a></header>
+<a href="/admin">Dashboard</a><a href="/admin/campaigns">Campaigns</a><a href="/admin/stats">Stats</a><a href="/admin/contacts">Contacts</a><a href="/admin/mailboxes">Mailboxes</a><a href="/admin/replies">Replies</a><a href="/admin/callbacks">Call-backs</a><a href="/admin/report">Client report</a><a href="/admin/settings">Settings</a></header>
 <main>${flash ? `<div class="flash ${/^(Error|Failed)/i.test(flash) ? "err" : ""}">${h(flash)}</div>` : ""}${body}</main></body></html>`;
 }
 const flashOf = (req) => (req.query.msg ? String(req.query.msg) : "");
@@ -524,4 +525,32 @@ admin.post("/settings", async (req, res) => {
   const d = String(req.body.ramp_started_on || "").trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(d)) await setSetting("ramp_started_on", d); else await q("DELETE FROM settings WHERE key='ramp_started_on'");
   redirect(res, "/admin/settings", "Saved");
+});
+
+// ---- client report -----------------------------------------------------------
+admin.get("/report", async (req, res) => {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.day || "")) ? String(req.query.day) : yesterdayKey();
+  const link = reportCfg.token.length >= 16 ? `${reportCfg.baseUrl}/report/${encodeURIComponent(reportCfg.token)}` : "";
+  const missing = emailReady();
+  let preview;
+  try { preview = await renderEmail(day); } catch (e) { preview = { subject: `Error: ${e.message}`, html: "" }; }
+  const srcdoc = String(preview.html || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  res.send(page("Client report", `<h1>Client report</h1>
+<div class="box"><b>Client page:</b> ${link ? `<a href="${h(link)}" target="_blank" rel="noopener">${h(link)}</a><br><small>Anyone with this link can see the report. Change REPORT_TOKEN to revoke it.</small>` : `<span class="bad">Not set up.</span> <small>Set REPORT_TOKEN (at least 16 random characters) on the server.</small>`}</div>
+<div class="box"><b>Morning email:</b> ${reportCfg.emailEnabled ? `<span class="ok">ON</span>` : `<span class="muted">OFF</span>`} · sends at ${h(reportCfg.time)} (${h(cfg.tz)}) with the previous day's figures, only after a day with sending<br>
+<small>To: ${h(reportCfg.to.join(", ") || "(not set)")}${reportCfg.cc.length ? ` · Cc: ${h(reportCfg.cc.join(", "))}` : ""} · From: ${h(reportCfg.from || "(not set)")} · Last result: ${h(reportState.lastResult || "–")}</small>
+${missing.length ? `<br><small class="bad">Missing settings: ${h(missing.join(", "))}</small>` : ""}
+<br><small>Turn on by setting REPORT_EMAIL_ENABLED=true. Market Watcher figures from outside campaigns: ${reportCfg.instantlyKey ? "connected" : "INSTANTLY_REPORT_API_KEY not set"}.</small></div>
+<div class="box"><form method="get" class="inline">Preview day <input type="text" name="day" value="${h(day)}" style="width:130px"> <button class="sec">Preview</button></form>
+<form method="post" action="/admin/report/test" class="inline" style="margin-left:16px">Send a test of this day to <input type="text" name="to" placeholder="you@example.com" style="width:220px"><input type="hidden" name="day" value="${h(day)}"> <button>Send test</button></form></div>
+<p><b>Subject:</b> ${h(preview.subject)}</p>
+<iframe srcdoc="${srcdoc}" style="width:100%;height:760px;border:1px solid #e3e6ea;background:#fff"></iframe>`, flashOf(req)));
+});
+
+admin.post("/report/test", async (req, res) => {
+  const to = String(req.body.to || "").trim();
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body.day || "")) ? String(req.body.day) : yesterdayKey();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return redirect(res, `/admin/report?day=${day}`, "Error: enter one email address for the test");
+  try { const r = await sendReportEmail({ dayKey: day, to: [to], cc: [] }); redirect(res, `/admin/report?day=${day}`, `Test sent to ${to}: ${r.subject}`); }
+  catch (e) { redirect(res, `/admin/report?day=${day}`, `Failed: ${e.message}`); }
 });

@@ -137,6 +137,8 @@ ALTER TABLE steps ADD COLUMN IF NOT EXISTS preheader TEXT NOT NULL DEFAULT '';
 ALTER TABLE sends ADD COLUMN IF NOT EXISTS bounce_type TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS converted_at TIMESTAMPTZ;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS conversion_event TEXT;
+-- When an outside (Instantly) campaign emailed this contact; lets conversions.js count their enquiries too.
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS instantly_sent_at TIMESTAMPTZ;
 ALTER TABLE steps ADD COLUMN IF NOT EXISTS preheader TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS callback_events (

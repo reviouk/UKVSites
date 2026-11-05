@@ -23,13 +23,13 @@ export async function syncConversions() {
   busy = true;
   convState.lastRun = new Date();
   try {
-    await q("ALTER TABLE contacts ADD COLUMN IF NOT EXISTS converted_at TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS conversion_event TEXT");
+    await q("ALTER TABLE contacts ADD COLUMN IF NOT EXISTS converted_at TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS conversion_event TEXT, ADD COLUMN IF NOT EXISTS instantly_sent_at TIMESTAMPTZ");
     // Everyone we have emailed who has not converted yet (most recent first; cap per run to respect rate limits)
     const rows = await all(`
-      SELECT c.id, c.email, min(s.sent_at) AS first_sent
-        FROM contacts c JOIN sends s ON s.contact_id = c.id AND s.status <> 'failed'
-       WHERE c.converted_at IS NULL
-       GROUP BY c.id ORDER BY min(s.sent_at) DESC LIMIT 20000`);
+      SELECT c.id, c.email, LEAST(min(s.sent_at), c.instantly_sent_at) AS first_sent
+        FROM contacts c LEFT JOIN sends s ON s.contact_id = c.id AND s.status <> 'failed'
+       WHERE c.converted_at IS NULL AND (s.id IS NOT NULL OR c.instantly_sent_at IS NOT NULL)
+       GROUP BY c.id ORDER BY 3 DESC LIMIT 20000`);
     let found = 0, checked = 0;
     for (let i = 0; i < rows.length; i += 100) {
       const chunk = rows.slice(i, i + 100);
