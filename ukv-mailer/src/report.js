@@ -14,7 +14,6 @@
  *   REPORT_EMAIL_TO / _CC      comma-separated recipients
  *   REPORT_EMAIL_TIME          local send time, default 07:30 (TIMEZONE)
  *   REPORT_SMTP_HOST/PORT/USER/PASS, REPORT_FROM ("Name <addr>", default REPORT_SMTP_USER)
- *   REPORT_SINCE               first day shown in "since launch" totals, default 2026-11-01
  */
 import nodemailer from "nodemailer";
 import { timingSafeEqual } from "node:crypto";
@@ -34,7 +33,6 @@ export const reportCfg = {
   time: env("REPORT_EMAIL_TIME", "07:30"),
   smtp: { host: env("REPORT_SMTP_HOST"), port: Number(env("REPORT_SMTP_PORT", 465)), user: env("REPORT_SMTP_USER"), pass: env("REPORT_SMTP_PASS") },
   from: env("REPORT_FROM") || env("REPORT_SMTP_USER"),
-  since: env("REPORT_SINCE", "2026-11-01"),
   instantlyKey: env("INSTANTLY_REPORT_API_KEY"),
   instantlyCampaigns: env("INSTANTLY_REPORT_CAMPAIGNS", "2cecb091-fd83-4b06-a647-a9fa1ee64637:marketwatcher")
     .split(",").map(s => s.trim()).filter(Boolean).map(s => { const [id, site] = s.split(":"); return { id, site: site || "marketwatcher" }; }),
@@ -161,11 +159,9 @@ function notes(r) {
 
 export async function renderClientPage() {
   const to = todayKey(), from = addDays(to, -13);
-  const [recent, launch] = await Promise.all([dailyReport(from, to), dailyReport(reportCfg.since, to)]);
+  const recent = await dailyReport(from, to);
   const y = recent.days.find(d => d.day === yesterdayKey());
   const t = recent.days[0];
-  const card = (v, l, sub = "") => `<div class="card"><b>${v}</b><span>${l}</span>${sub ? `<small>${sub}</small>` : ""}</div>`;
-  const all = launch.totals.all;
   const dayRows = recent.days.map(d => `<tr><td style="${pageStyle.td}text-align:left">${nice(d.day)}${d.day === to ? ' <span class="muted">(so far)</span>' : ""}</td>${
     BRANDS.map(b => `<td style="${pageStyle.td}">${n(d.brands[b].sent)}</td>`).join("")}<td style="${pageStyle.td}font-weight:600">${n(d.total.sent)}</td>${
     ["bounced", "replies", "clicks", "enquiries"].map(k => `<td style="${pageStyle.td}">${n(d.total[k])}</td>`).join("")}</tr>`).join("");
@@ -178,31 +174,25 @@ header{background:#16202e;color:#fff;padding:20px 16px}header div{max-width:1000
 header h1{margin:0;font-size:20px;font-weight:600}header p{margin:4px 0 0;color:#c5cfdb;font-size:13px}
 main{max-width:1000px;margin:0 auto;padding:20px 16px 48px}
 h2{font-size:15px;margin:28px 0 10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
-.card{background:#fff;border:1px solid var(--line);padding:14px 16px}.card b{display:block;font-size:26px;font-weight:600}
-.card span{color:var(--muted);font-size:13px}.card small{display:block;color:var(--muted);font-size:12px}
 .scroll{overflow-x:auto;border:1px solid var(--line);background:#fff}.muted{color:var(--muted);font-size:12px}
 ul{padding-left:18px;color:var(--muted);font-size:13px}footer{color:var(--muted);font-size:12px;margin-top:24px}
 </style></head><body>
 <header><div><h1>Email campaign report</h1><p>Invest Chronicles &amp; Market Watcher · updated ${h(new Date().toLocaleString("en-GB", { timeZone: cfg.tz, dateStyle: "medium", timeStyle: "short" }))}</p></div></header>
 <main>
-<h2>Since launch (${h(nice(reportCfg.since, { day: "numeric", month: "short", year: "numeric" }))})</h2>
-<div class="cards">${card(n(all.sent), "Emails sent")}${card(n(all.replies), "Replies", pct(all.replies, all.sent) + " reply rate")}${card(n(all.clicks), "Link clicks")}${card(n(all.enquiries), "Website enquiries")}${card(pct(all.bounced, all.sent), "Bounce rate", n(all.bounced) + " bounced")}</div>
-<div class="scroll" style="margin-top:12px">${brandTable(launch.totals, pageStyle)}</div>
 <h2>Yesterday · ${h(nice(yesterdayKey()))}</h2>
 ${y ? `<div class="scroll">${brandTable({ ...y.brands, all: y.total }, pageStyle)}</div>` : ""}
 <h2>Today so far · ${h(nice(to))}</h2>
 <div class="scroll">${brandTable({ ...t.brands, all: t.total }, pageStyle)}</div>
 <h2>Last 14 days</h2>
 <div class="scroll"><table style="${pageStyle.table}"><tr><th style="${pageStyle.th}text-align:left">Day</th>${BRANDS.map(b => `<th style="${pageStyle.th}">${h(label(b))}</th>`).join("")}<th style="${pageStyle.th}">Total sent</th><th style="${pageStyle.th}">Bounced</th><th style="${pageStyle.th}">Replies</th><th style="${pageStyle.th}">Clicks</th><th style="${pageStyle.th}">Enquiries</th></tr>${dayRows}</table></div>
-<h2>Notes</h2><ul>${notes(launch).map(x => `<li>${h(x)}</li>`).join("")}</ul>
+<h2>Notes</h2><ul>${notes(recent).map(x => `<li>${h(x)}</li>`).join("")}</ul>
 <footer>Sending runs Monday to Friday, 08:00–17:30 UK time.</footer>
 </main></body></html>`;
 }
 
-/** The morning email: the previous day's sending, plus totals since launch. */
+/** The morning email: the previous day's sending. */
 export async function renderEmail(dayKey = yesterdayKey()) {
-  const [d, launch] = await Promise.all([dailyReport(dayKey, dayKey), dailyReport(reportCfg.since, dayKey)]);
+  const d = await dailyReport(dayKey, dayKey);
   const day = d.days[0];
   const s = { ...pageStyle, table: "border-collapse:collapse;width:100%;font-size:13px;background:#fff",
     th: pageStyle.th.replace("padding:8px 10px", "padding:6px 6px").replace("letter-spacing:.04em", "letter-spacing:0"), td: pageStyle.td.replace("padding:8px 10px", "padding:7px 6px") };
@@ -215,15 +205,12 @@ export async function renderEmail(dayKey = yesterdayKey()) {
 <p style="margin:0 0 16px;color:#6b7684;font-size:13px">${h(nice(dayKey, { weekday: "long", day: "numeric", month: "long", year: "numeric" }))}</p>
 <p style="font-size:15px;margin:0 0 14px"><b>${n(day.total.sent)}</b> emails sent · <b>${n(day.total.replies)}</b> replies · <b>${n(day.total.clicks)}</b> link clicks · <b>${n(day.total.enquiries)}</b> website enquiries · ${pct(day.total.bounced, day.total.sent)} bounced</p>
 ${brandTable({ ...day.brands, all: day.total }, s, cols)}
-<h2 style="font-size:14px;margin:22px 0 8px">Since launch (${h(nice(reportCfg.since, { day: "numeric", month: "short" }))})</h2>
-${brandTable(launch.totals, s, cols)}
 ${link ? `<p style="margin:20px 0"><a href="${h(link)}" style="background:#16202e;color:#fff;padding:10px 16px;text-decoration:none;font-size:14px">View the full report</a></p>` : ""}
-<p style="color:#6b7684;font-size:12px;margin-top:18px">${h(notes(launch)[0])}</p>
+<p style="color:#6b7684;font-size:12px;margin-top:18px">${h(notes(d)[0])}</p>
 </div></body></html>`;
   const text = [`Email campaign report: ${nice(dayKey, { weekday: "long", day: "numeric", month: "long" })}`, "",
     ...BRANDS.map(b => `${label(b)}: ${n(day.brands[b].sent)} sent, ${n(day.brands[b].replies)} replies, ${n(day.brands[b].clicks)} clicks, ${n(day.brands[b].enquiries)} enquiries`),
     `Total: ${n(day.total.sent)} sent, ${n(day.total.replies)} replies, ${n(day.total.clicks)} clicks, ${n(day.total.enquiries)} enquiries, ${n(day.total.bounced)} bounced`,
-    "", `Since launch: ${n(launch.totals.all.sent)} sent, ${n(launch.totals.all.replies)} replies, ${n(launch.totals.all.enquiries)} enquiries`,
     link ? `\nFull report: ${link}` : ""].join("\n");
   return { subject, html, text, totalSent: day.total.sent };
 }
