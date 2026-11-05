@@ -1,6 +1,6 @@
 /**
- * Reply + bounce detection. Polls the Maildoso master inbox (every mailbox forwards
- * there) over IMAP, matches each new message back to a send by In-Reply-To /
+ * Reply + bounce detection. Polls the Maildoso master inbox (every Maildoso mailbox forwards
+ * there) plus the own INBOX of every mailbox flagged imap_poll (Gmail boxes on app passwords), matches each new message back to a send by In-Reply-To /
  * References / recipient address, and:
  *   - real reply      -> contact.status=replied, all sequences stopped, HubSpot ukv_replied
  *   - bounce (DSN)    -> contact.status=bounced, suppressed, sequences stopped
@@ -16,29 +16,61 @@ export const replyState = { lastPoll: null, lastResult: "", configured: !!(cfg.i
 let busy = false;
 
 export function startReplyPoller() {
-  if (!replyState.configured) { console.warn("[imap] IMAP_HOST/IMAP_USER/IMAP_PASS not set; reply detection disabled"); return; }
+  if (!replyState.configured) console.warn("[imap] IMAP_HOST/IMAP_USER/IMAP_PASS not set; master inbox not polled (per-mailbox inboxes still are)");
   poll().catch(e => console.error("[imap] poll error", e.message));
   setInterval(() => poll().catch(e => console.error("[imap] poll error", e.message)), cfg.imap.pollMinutes * 60_000);
 }
 
+/** Every inbox to read: the master inbox (env) and each enabled mailbox flagged imap_poll. */
+async function sources() {
+  const list = [];
+  if (replyState.configured) list.push({ label: "master", host: cfg.imap.host, port: cfg.imap.port, user: cfg.imap.user, pass: cfg.imap.pass, uidKey: "imap_last_uid" });
+  const boxes = await all("SELECT id, email, imap_host, imap_port, imap_pass, smtp_pass FROM mailboxes WHERE imap_poll AND enabled ORDER BY id");
+  for (const b of boxes) {
+    const pass = b.imap_pass || b.smtp_pass;
+    if (!pass) continue;
+    list.push({ label: b.email, mailboxId: b.id, host: b.imap_host || "imap.gmail.com", port: Number(b.imap_port) || 993, user: b.email, pass, uidKey: `imap_last_uid:mb${b.id}` });
+  }
+  return list;
+}
+
 export async function poll() {
-  if (busy || !replyState.configured) return;
+  if (busy) return;
   busy = true;
   replyState.lastPoll = new Date();
+  let fresh = 0, handled = 0;
+  const errors = [];
+  try {
+    for (const src of await sources()) {
+      try {
+        const r = await pollInbox(src);
+        fresh += r.fresh; handled += r.handled;
+      } catch (e) {
+        errors.push(`${src.label}: ${e.message}`);
+        console.error(`[imap] ${src.label}: ${e.message}`);
+        if (src.mailboxId) await q("UPDATE mailboxes SET last_error=$2, last_error_at=now() WHERE id=$1", [src.mailboxId, `IMAP: ${e.message}`.slice(0, 300)]).catch(() => {});
+      }
+    }
+    replyState.lastResult = `${fresh} new message(s), ${handled} processed` + (errors.length ? `; ${errors.length} inbox error(s): ${errors[0].slice(0, 120)}` : "");
+  } finally { busy = false; }
+}
+
+async function pollInbox(src) {
   const client = new ImapFlow({
-    host: cfg.imap.host, port: cfg.imap.port, secure: true,
-    auth: { user: cfg.imap.user, pass: cfg.imap.pass },
+    host: src.host, port: src.port, secure: true,
+    auth: { user: src.user, pass: src.pass },
     logger: false,
     tls: process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0" ? { rejectUnauthorized: false } : undefined,
   });
-  let handled = 0;
+  let handled = 0, count = 0;
   try {
     await client.connect();
     const lock = await client.getMailboxLock("INBOX");
     try {
-      const lastUid = Number(await getSetting("imap_last_uid", 0));
+      const lastUid = Number(await getSetting(src.uidKey, 0));
       const uids = await client.search(lastUid ? { uid: `${lastUid + 1}:*` } : { since: new Date(Date.now() - 2 * 86400e3) }, { uid: true });
       const fresh = (uids || []).filter(u => u > lastUid);
+      count = fresh.length;
       for (const uid of fresh) {
         try {
           const msg = await client.fetchOne(uid, { source: true }, { uid: true });
@@ -47,18 +79,17 @@ export async function poll() {
           await handleMessage(parsed, uid);
           handled++;
         } catch (e) {
-          console.warn(`[imap] uid ${uid}: ${e.message}`);
+          console.warn(`[imap] ${src.label} uid ${uid}: ${e.message}`);
         }
-        await setSetting("imap_last_uid", uid);
+        await setSetting(src.uidKey, uid);
       }
-      replyState.lastResult = `${fresh.length} new message(s), ${handled} processed`;
     } finally { lock.release(); }
     await client.logout();
   } catch (e) {
-    replyState.lastResult = `error: ${e.message}`;
     try { await client.logout(); } catch {}
     throw e;
-  } finally { busy = false; }
+  }
+  return { fresh: count, handled };
 }
 
 const addr = (a) => (a?.value?.[0]?.address || "").toLowerCase().trim();
