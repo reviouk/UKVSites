@@ -128,27 +128,34 @@ const label = (site) => SITES[site]?.label === "The Invest Chronicle" ? "Invest 
 const pct = (a, b) => (b ? `${((100 * a) / b).toFixed(1)}%` : "–");
 const n = (x) => Number(x || 0).toLocaleString("en-GB");
 
-const COLS = { sent: "Sent", bounced: "Bounced", replies: "Replies", clicks: "Link clicks", unsubscribes: "Unsubscribed", enquiries: "Enquiries" };
-function brandTable(t, style, keys = Object.keys(COLS)) {
-  const head = ["", ...keys.map(k => COLS[k])];
-  const row = (name, m, bold) => `<tr${bold ? ` style="font-weight:600;${style.totalRow}"` : ""}><td style="${style.td}text-align:left">${h(name)}</td>${
-    keys.map(k => `<td style="${style.td}">${n(m[k])}</td>`).join("")}</tr>`;
-  return `<table role="presentation" cellpadding="0" cellspacing="0" style="${style.table}">
-<tr>${head.map((x, i) => `<th style="${style.th}${i ? "" : "text-align:left"}">${x}</th>`).join("")}</tr>
-${BRANDS.map(b => row(label(b), t[b])).join("")}${row("Total", t.all || t.total, true)}</table>`;
-}
-
-const pageStyle = {
-  table: "border-collapse:collapse;width:100%;background:#fff;font-size:14px",
-  th: "padding:8px 10px;border-bottom:2px solid #d9dee4;text-align:right;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#5b6775;font-weight:600;white-space:nowrap;",
-  td: "padding:8px 10px;border-bottom:1px solid #eef0f2;text-align:right;white-space:nowrap;",
-  totalRow: "background:#f6f7f9;",
+// Brand + metric palette, shared by the page and the email.
+const BRAND_COLOR = { investchronicles: "#1f6f78", marketwatcher: "#c8892b" };
+const METRIC = {
+  sent:         { name: "Emails sent",       color: "#c8892b", tint: "#f8ecd8" },
+  replies:      { name: "Replies",           color: "#2e7d4f", tint: "#dff0e5" },
+  clicks:       { name: "Link clicks",       color: "#2c5fa8", tint: "#dfe8f6" },
+  enquiries:    { name: "Website enquiries", color: "#8a3b6e", tint: "#f3e0ec" },
+  bounced:      { name: "Bounced",           color: "#b5452f", tint: "#f8e1dc" },
+  unsubscribes: { name: "Unsubscribed",      color: "#6b7280", tint: "#eceef1" },
 };
+// Line icons (24px grid, stroke = currentColor).
+const ICON = {
+  sent: '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/>',
+  replies: '<path d="M9 17 4 12l5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
+  clicks: '<path d="m9 9 5 12 1.8-5.2L21 14 9 9z"/><path d="M7.2 2.2 8 5.1"/><path d="m5.1 8-2.9-.8"/><path d="M14 4.1 12 6"/><path d="m6 12-1.9 2"/>',
+  enquiries: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3h6v3H9z"/><path d="m9 14 2 2 4-4"/>',
+  bounced: '<circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
+  unsubscribes: '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="m17 8 5 5"/><path d="m22 8-5 5"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  layers: '<path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+};
+const svg = (name, size = 18) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
 
 function notes(r) {
   const list = [
-    "Open tracking is switched off on purpose: tracking pixels push cold email towards spam folders and open figures are unreliable (Apple Mail and corporate filters auto-load images). Replies, link clicks and website enquiries are the measures that matter.",
-    "Enquiries are HubSpot form submissions made by people we emailed, after the email reached them. They are checked hourly.",
+    "Open tracking is switched off on purpose: tracking pixels push cold email towards spam folders, and open figures are unreliable because Apple Mail and corporate filters load images automatically. Replies, link clicks and website enquiries are the measures that matter.",
+    "Website enquiries are HubSpot form submissions made by people we emailed, after the email reached them. They are checked hourly.",
     "Replies exclude bounces and out-of-office auto-replies where these can be recognised.",
   ];
   if (!r.outside.connected) list.push(r.outside.configured
@@ -157,57 +164,226 @@ function notes(r) {
   return list;
 }
 
+/** Client page: 90 days of daily figures embedded as JSON; filters (period, brand, chart metric) run in the browser. */
 export async function renderClientPage() {
-  const to = todayKey(), from = addDays(to, -13);
-  const recent = await dailyReport(from, to);
-  const y = recent.days.find(d => d.day === yesterdayKey());
-  const t = recent.days[0];
-  const dayRows = recent.days.map(d => `<tr><td style="${pageStyle.td}text-align:left">${nice(d.day)}${d.day === to ? ' <span class="muted">(so far)</span>' : ""}</td>${
-    BRANDS.map(b => `<td style="${pageStyle.td}">${n(d.brands[b].sent)}</td>`).join("")}<td style="${pageStyle.td}font-weight:600">${n(d.total.sent)}</td>${
-    ["bounced", "replies", "clicks", "enquiries"].map(k => `<td style="${pageStyle.td}">${n(d.total[k])}</td>`).join("")}</tr>`).join("");
+  const to = todayKey(), from = addDays(to, -89);
+  const r = await dailyReport(from, to);
+  const data = {
+    today: to, yesterday: yesterdayKey(),
+    brands: BRANDS.map(b => ({ key: b, name: label(b), color: BRAND_COLOR[b] })),
+    metrics: Object.fromEntries(Object.entries(METRIC).map(([k, v]) => [k, { ...v, icon: svg(k, 20) }])),
+    days: r.days.slice().reverse().map(d => ({ day: d.day, b: Object.fromEntries(BRANDS.map(b => [b, d.brands[b]])) })),
+  };
+  const json = JSON.stringify(data).replace(/</g, "\\u003c");
+  const updated = new Date().toLocaleString("en-GB", { timeZone: cfg.tz, dateStyle: "medium", timeStyle: "short" });
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow"><title>Email campaign report</title>
+<meta name="robots" content="noindex,nofollow"><meta name="color-scheme" content="light"><title>Campaign Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-:root{--ink:#1b2430;--muted:#6b7684;--line:#e3e6ea;--bg:#f6f7f9;--accent:#a8741a}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-header{background:#16202e;color:#fff;padding:20px 16px}header div{max-width:1000px;margin:0 auto}
-header h1{margin:0;font-size:20px;font-weight:600}header p{margin:4px 0 0;color:#c5cfdb;font-size:13px}
-main{max-width:1000px;margin:0 auto;padding:20px 16px 48px}
-h2{font-size:15px;margin:28px 0 10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
-.scroll{overflow-x:auto;border:1px solid var(--line);background:#fff}.muted{color:var(--muted);font-size:12px}
-ul{padding-left:18px;color:var(--muted);font-size:13px}footer{color:var(--muted);font-size:12px;margin-top:24px}
+:root{--ink:#191714;--ink2:#4a443c;--muted:#857b6e;--line:#e7dfd2;--paper:#f7f3ec;--card:#fffdf9;--peat:#16130f;--amber:#c8892b;--teal:#1f6f78;
+--serif:"Fraunces",Georgia,serif;--sans:"Hanken Grotesk",system-ui,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+.num{font-family:var(--serif);font-variant-numeric:tabular-nums lining-nums;font-weight:600;letter-spacing:-.01em}
+header{position:relative;overflow:hidden;color:#f3eadb;background:
+ radial-gradient(900px 300px at 85% -40%,rgba(200,137,43,.38),transparent 60%),
+ radial-gradient(700px 260px at 0% 120%,rgba(31,111,120,.35),transparent 60%),var(--peat)}
+header::after{content:"";position:absolute;inset:0;opacity:.07;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E")}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+.head{position:relative;z-index:1;padding-top:34px;padding-bottom:30px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#d9b77c}
+h1{font-family:var(--serif);font-weight:400;font-size:clamp(28px,5vw,40px);line-height:1.1;margin:6px 0 6px}
+.brands-line{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:#cfc3ae}
+.brands-line i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.updated{font-size:12px;color:#a99c86;text-align:right}
+/* filters */
+.filters{position:sticky;top:0;z-index:5;background:rgba(247,243,236,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.filters .wrap{display:flex;gap:10px 18px;align-items:center;flex-wrap:wrap;padding-top:12px;padding-bottom:12px}
+.fgroup{display:flex;align-items:center;gap:8px;color:var(--muted);min-width:0;max-width:100%}
+.seg{display:inline-flex;background:#ece5d9;border-radius:999px;padding:3px;max-width:100%;overflow-x:auto;scrollbar-width:none}.seg::-webkit-scrollbar{display:none}
+.seg button{border:0;background:transparent;font:500 13px var(--sans);color:var(--ink2);padding:6px 12px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.seg button[aria-pressed=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 1px var(--line)}
+.seg button:focus-visible,.dates input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.dates{display:none;gap:6px;align-items:center;font-size:13px}.dates.on{display:flex}
+.dates input{font:13px var(--sans);padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+main{padding:26px 0 56px}
+.period{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.period h2{font-family:var(--serif);font-weight:400;font-size:22px;margin:0}
+.period span{color:var(--muted);font-size:13px}
+/* KPI cards */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 16px 14px;position:relative;overflow:hidden;animation:rise .5s both}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c)}
+.kpi .ic{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:var(--t);color:var(--c);margin-bottom:12px}
+.kpi .v{font-size:34px;line-height:1}
+.kpi .l{color:var(--ink2);font-size:13px;margin-top:6px}
+.kpi .s{color:var(--muted);font-size:12px;margin-top:2px;min-height:18px}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+section{margin-top:28px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+.sec-h{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.sec-h h3{margin:0;font:600 13px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px}
+/* brand split */
+.split{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.brand{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;border-top:4px solid var(--bc)}
+.brand .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.brand .nm{font-family:var(--serif);font-size:20px}
+.brand .big{font-size:28px}
+.share{height:6px;background:#efe8dc;border-radius:99px;margin:12px 0 14px;overflow:hidden}.share i{display:block;height:100%;background:var(--bc);border-radius:99px;transition:width .5s}
+.rows{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px}
+.row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink2)}
+.row svg{color:var(--c);flex:none}.row b{margin-left:auto;font-family:var(--serif);font-weight:600;color:var(--ink);font-size:15px}
+/* chart */
+.chart{width:100%;height:240px;display:block}
+.chart .grid{stroke:#eee6d8}.chart text{font:11px var(--sans);fill:var(--muted)}
+.chart rect.bar{transition:opacity .15s}.chart g.col:hover rect.bar{opacity:.8}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--ink2);flex-wrap:wrap}
+.empty{fill:var(--muted);font:13px var(--sans)}
+/* table */
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{font:600 11px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:right;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+td{padding:9px 10px;border-bottom:1px solid #f1ebe1;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+tr.zero td{color:#b3a999}tr.tot td{font-weight:600;border-top:2px solid var(--line);border-bottom:0}
+td .chip{display:inline-block;min-width:22px;padding:1px 7px;border-radius:99px;background:var(--t);color:var(--c);font-weight:600}
+.notes{display:grid;gap:8px;font-size:13px;color:var(--ink2)}.notes p{margin:0;display:flex;gap:10px}.notes svg{color:var(--muted);flex:none;margin-top:2px}
+footer{color:var(--muted);font-size:12px;margin-top:26px;text-align:center}
+@media (max-width:560px){.kpi .v{font-size:28px}.kpis{grid-template-columns:1fr 1fr}.rows{grid-template-columns:1fr}.head{padding-top:26px;padding-bottom:22px}.updated{text-align:left}.filters{position:static}.filters .wrap{gap:8px}.fgroup{width:100%}.seg button{padding:6px 10px}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body>
-<header><div><h1>Email campaign report</h1><p>Invest Chronicles &amp; Market Watcher · updated ${h(new Date().toLocaleString("en-GB", { timeZone: cfg.tz, dateStyle: "medium", timeStyle: "short" }))}</p></div></header>
-<main>
-<h2>Yesterday · ${h(nice(yesterdayKey()))}</h2>
-${y ? `<div class="scroll">${brandTable({ ...y.brands, all: y.total }, pageStyle)}</div>` : ""}
-<h2>Today so far · ${h(nice(to))}</h2>
-<div class="scroll">${brandTable({ ...t.brands, all: t.total }, pageStyle)}</div>
-<h2>Last 14 days</h2>
-<div class="scroll"><table style="${pageStyle.table}"><tr><th style="${pageStyle.th}text-align:left">Day</th>${BRANDS.map(b => `<th style="${pageStyle.th}">${h(label(b))}</th>`).join("")}<th style="${pageStyle.th}">Total sent</th><th style="${pageStyle.th}">Bounced</th><th style="${pageStyle.th}">Replies</th><th style="${pageStyle.th}">Clicks</th><th style="${pageStyle.th}">Enquiries</th></tr>${dayRows}</table></div>
-<h2>Notes</h2><ul>${notes(recent).map(x => `<li>${h(x)}</li>`).join("")}</ul>
-<footer>Sending runs Monday to Friday, 08:00–17:30 UK time.</footer>
-</main></body></html>`;
+<header><div class="wrap head">
+ <div><div class="eyebrow">Email campaign report</div><h1>Outreach performance</h1>
+ <div class="brands-line">${data.brands.map(b => `<span><i style="background:${b.color}"></i>${h(b.name)}</span>`).join("")}</div></div>
+ <div class="updated">Updated ${h(updated)}<br>Figures refresh every time this page is opened</div>
+</div></header>
+<div class="filters"><div class="wrap">
+ <div class="fgroup">${svg("calendar", 16)}<div class="seg" id="range" role="group" aria-label="Period">
+  <button data-r="today">Today</button><button data-r="yesterday">Yesterday</button><button data-r="7">7 days</button><button data-r="14">14 days</button><button data-r="30">30 days</button><button data-r="month">This month</button><button data-r="custom">Custom</button></div></div>
+ <div class="dates" id="dates"><input type="date" id="dfrom" aria-label="From"> to <input type="date" id="dto" aria-label="To"></div>
+ <div class="fgroup">${svg("layers", 16)}<div class="seg" id="brand" role="group" aria-label="Brand">
+  <button data-b="all">All brands</button>${data.brands.map(b => `<button data-b="${b.key}"><span class="dot" style="background:${b.color}"></span>${h(b.name)}</button>`).join("")}</div></div>
+</div></div>
+<main class="wrap">
+ <div class="period"><h2 id="ptitle"></h2><span id="psub"></span></div>
+ <div class="kpis" id="kpis"></div>
+ <section><div class="sec-h"><h3>By brand</h3></div><div class="split" id="split"></div></section>
+ <section class="card"><div class="sec-h"><h3>Daily trend</h3><div class="seg" id="metric" role="group" aria-label="Chart metric">
+  <button data-m="sent">Sent</button><button data-m="replies">Replies</button><button data-m="clicks">Clicks</button><button data-m="enquiries">Enquiries</button><button data-m="bounced">Bounces</button></div></div>
+  <svg class="chart" id="chart" role="img" aria-label="Daily chart"></svg><div class="legend" id="legend"></div></section>
+ <section class="card"><div class="sec-h"><h3>Day by day</h3></div><div class="tbl" id="table"></div></section>
+ <section><div class="notes">${notes(r).map(x => `<p>${svg("info", 16)}<span>${h(x)}</span></p>`).join("")}</div></section>
+ <footer>Sending runs Monday to Friday, 08:00–17:30 UK time.</footer>
+</main>
+<script>
+const D=${json};
+const $=s=>document.querySelector(s), fmt=x=>Number(x||0).toLocaleString("en-GB");
+const KEYS=["sent","replies","clicks","enquiries","bounced","unsubscribes"];
+const st={r:"7",b:"all",m:"sent",from:"",to:""};
+try{const q=new URLSearchParams(location.search);if(q.get("range"))st.r=q.get("range");if(q.get("brand"))st.b=q.get("brand");if(q.get("from"))st.from=q.get("from");if(q.get("to"))st.to=q.get("to");}catch(e){}
+const add=(k,n)=>{const d=new Date(k+"T12:00:00Z");d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
+const nice=(k,o)=>new Date(k+"T12:00:00Z").toLocaleDateString("en-GB",Object.assign({timeZone:"UTC"},o||{weekday:"short",day:"numeric",month:"short"}));
+const first=D.days[0].day;
+function range(){
+  if(st.r==="today")return[D.today,D.today];
+  if(st.r==="yesterday")return[D.yesterday,D.yesterday];
+  if(st.r==="month")return[D.today.slice(0,8)+"01",D.today];
+  if(st.r==="custom"){let f=st.from||add(D.today,-6),t=st.to||D.today;if(f<first)f=first;if(t>D.today)t=D.today;if(f>t)[f,t]=[t,f];return[f,t]}
+  return[add(D.today,-(Number(st.r)||7)+1),D.today];
+}
+const brands=()=>st.b==="all"?D.brands.map(b=>b.key):[st.b];
+const sum=(rows,keys)=>{const o=Object.fromEntries(KEYS.map(k=>[k,0]));rows.forEach(d=>keys.forEach(b=>KEYS.forEach(k=>o[k]+=(d.b[b]||{})[k]||0)));return o};
+const pct=(a,b)=>b?(100*a/b).toFixed(1)+"%":"–";
+function seg(id,key,attr){document.querySelectorAll("#"+id+" button").forEach(btn=>btn.setAttribute("aria-pressed",String(btn.dataset[attr]===st[key])))}
+function render(){
+  const[f,t]=range(), rows=D.days.filter(d=>d.day>=f&&d.day<=t), bk=brands(), s=sum(rows,bk);
+  seg("range","r","r");seg("brand","b","b");seg("metric","m","m");
+  $("#dates").classList.toggle("on",st.r==="custom");$("#dfrom").value=f;$("#dto").value=t;$("#dfrom").min=$("#dto").min=first;$("#dfrom").max=$("#dto").max=D.today;
+  $("#ptitle").textContent=f===t?nice(f,{weekday:"long",day:"numeric",month:"long"}):nice(f,{day:"numeric",month:"short"})+" – "+nice(t,{day:"numeric",month:"short",year:"numeric"});
+  $("#psub").textContent=(st.b==="all"?"All brands":D.brands.find(b=>b.key===st.b).name)+(t===D.today?" · today's figures are so far":"");
+  const sub={sent:rows.length+" day"+(rows.length===1?"":"s"),replies:pct(s.replies,s.sent)+" reply rate",clicks:pct(s.clicks,s.sent)+" click rate",enquiries:pct(s.enquiries,s.sent)+" of emails sent",bounced:pct(s.bounced,s.sent)+" bounce rate",unsubscribes:pct(s.unsubscribes,s.sent)+" of emails sent"};
+  $("#kpis").innerHTML=KEYS.map((k,i)=>{const m=D.metrics[k];return '<div class="kpi" style="--c:'+m.color+';--t:'+m.tint+';animation-delay:'+(i*50)+'ms"><div class="ic">'+m.icon+'</div><div class="v num">'+fmt(s[k])+'</div><div class="l">'+m.name+'</div><div class="s">'+sub[k]+'</div></div>'}).join("");
+  const all=sum(rows,D.brands.map(b=>b.key));
+  $("#split").innerHTML=D.brands.filter(b=>bk.includes(b.key)).map(b=>{const x=sum(rows,[b.key]);const sh=all.sent?100*x.sent/all.sent:0;
+    return '<div class="brand" style="--bc:'+b.color+'"><div class="top"><span class="nm">'+b.name+'</span><span class="big num">'+fmt(x.sent)+'</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)"><span>emails sent</span><span>'+sh.toFixed(0)+'% of volume</span></div><div class="share"><i style="width:'+sh+'%"></i></div><div class="rows">'+
+    ["replies","clicks","enquiries","bounced"].map(k=>{const m=D.metrics[k];return '<div class="row" style="--c:'+m.color+'">'+m.icon.replace('width="20" height="20"','width="16" height="16"')+m.name+'<b>'+fmt(x[k])+'</b></div>'}).join("")+'</div></div>'}).join("");
+  chart(rows,bk);table(rows,bk,s);
+  try{const q=new URLSearchParams({range:st.r,brand:st.b});if(st.r==="custom"){q.set("from",f);q.set("to",t)}history.replaceState(null,"","?"+q)}catch(e){}
+}
+function chart(rows,bk){
+  const el=$("#chart"),W=el.clientWidth||900,H=240,P={l:34,r:8,t:10,b:28},m=st.m,mc=D.metrics[m];
+  const cols=rows.map(d=>({day:d.day,v:bk.map(b=>({b,v:(d.b[b]||{})[m]||0}))}));
+  const max=Math.max(1,...cols.map(c=>c.v.reduce((a,x)=>a+x.v,0)));
+  const step=Math.pow(10,Math.floor(Math.log10(max)));const top=Math.ceil(max/step)*step;
+  const iw=W-P.l-P.r,ih=H-P.t-P.b,bw=iw/Math.max(1,cols.length),y=v=>P.t+ih-ih*v/top;
+  let g="";for(let i=0;i<=4;i++){const v=top*i/4;g+='<line class="grid" x1="'+P.l+'" x2="'+(W-P.r)+'" y1="'+y(v)+'" y2="'+y(v)+'"/><text x="'+(P.l-6)+'" y="'+(y(v)+4)+'" text-anchor="end">'+fmt(Math.round(v))+'</text>'}
+  const every=Math.ceil(cols.length/12);
+  cols.forEach((c,i)=>{let acc=0;const x=P.l+i*bw+bw*.18,w=Math.max(2,bw*.64);let bars="";
+    c.v.forEach(p=>{if(!p.v)return;const color=m==="sent"?D.brands.find(b=>b.key===p.b).color:mc.color;const op=m==="sent"?1:(p.b===bk[0]?1:.55);
+      bars+='<rect class="bar" x="'+x+'" y="'+y(acc+p.v)+'" width="'+w+'" height="'+(y(acc)-y(acc+p.v))+'" rx="'+Math.min(4,w/3)+'" fill="'+color+'" fill-opacity="'+op+'"/>';acc+=p.v});
+    const tip=nice(c.day)+": "+c.v.map(p=>D.brands.find(b=>b.key===p.b).name+" "+fmt(p.v)).join(", ");
+    g+='<g class="col"><title>'+tip+'</title><rect x="'+(P.l+i*bw)+'" y="'+P.t+'" width="'+bw+'" height="'+ih+'" fill="transparent"/>'+bars+'</g>';
+    if(i%every===0)g+='<text x="'+(x+w/2)+'" y="'+(H-8)+'" text-anchor="middle">'+nice(c.day,{day:"numeric",month:"short"})+'</text>'});
+  if(!cols.some(c=>c.v.some(p=>p.v)))g+='<text class="empty" x="'+(W/2)+'" y="'+(H/2)+'" text-anchor="middle">No '+mc.name.toLowerCase()+' in this period yet</text>';
+  el.setAttribute("viewBox","0 0 "+W+" "+H);el.innerHTML=g;
+  $("#legend").innerHTML=m==="sent"?D.brands.filter(b=>bk.includes(b.key)).map(b=>'<span><span class="dot" style="background:'+b.color+'"></span>'+b.name+'</span>').join(""):'<span><span class="dot" style="background:'+mc.color+'"></span>'+mc.name+(bk.length>1?" (lighter shade: "+D.brands.find(b=>b.key===bk[1]).name+")":"")+'</span>';
+}
+function table(rows,bk,s){
+  const ks=["sent","replies","clicks","enquiries","bounced","unsubscribes"];
+  const chip=(k,v)=>v&&k!=="sent"?'<span class="chip" style="--c:'+D.metrics[k].color+';--t:'+D.metrics[k].tint+'">'+fmt(v)+'</span>':fmt(v);
+  let hb='<tr><th>Day</th>'+ks.map(k=>'<th>'+D.metrics[k].name.replace("Website ","").replace("Emails ","")+'</th>').join("")+'</tr>';
+  const body=rows.slice().reverse().map(d=>{const x=sum([d],bk);return '<tr class="'+(x.sent?"":"zero")+'"><td>'+nice(d.day)+(d.day===D.today?' <span style="color:var(--muted);font-size:12px">so far</span>':'')+'</td>'+ks.map(k=>'<td>'+chip(k,x[k])+'</td>').join("")+'</tr>'}).join("");
+  $("#table").innerHTML='<table>'+hb+body+'<tr class="tot"><td>Total</td>'+ks.map(k=>'<td>'+fmt(s[k])+'</td>').join("")+'</tr></table>';
+}
+document.querySelectorAll("#range button").forEach(b=>b.onclick=()=>{st.r=b.dataset.r;render()});
+document.querySelectorAll("#brand button").forEach(b=>b.onclick=()=>{st.b=b.dataset.b;render()});
+document.querySelectorAll("#metric button").forEach(b=>b.onclick=()=>{st.m=b.dataset.m;render()});
+$("#dfrom").onchange=e=>{st.from=e.target.value;st.r="custom";render()};$("#dto").onchange=e=>{st.to=e.target.value;st.r="custom";render()};
+let rt;window.addEventListener("resize",()=>{clearTimeout(rt);rt=setTimeout(render,150)});
+if(!D.brands.some(b=>b.key===st.b))st.b="all";
+render();
+</script>
+</body></html>`;
 }
 
-/** The morning email: the previous day's sending. */
+/** The morning email: the previous day's sending (email-safe HTML: tables, inline styles, no SVG). */
 export async function renderEmail(dayKey = yesterdayKey()) {
   const d = await dailyReport(dayKey, dayKey);
   const day = d.days[0];
-  const s = { ...pageStyle, table: "border-collapse:collapse;width:100%;font-size:13px;background:#fff",
-    th: pageStyle.th.replace("padding:8px 10px", "padding:6px 6px").replace("letter-spacing:.04em", "letter-spacing:0"), td: pageStyle.td.replace("padding:8px 10px", "padding:7px 6px") };
-  const cols = ["sent", "replies", "clicks", "enquiries", "bounced"];
-  const link = reportCfg.token ? `${reportCfg.baseUrl}/report/${encodeURIComponent(reportCfg.token)}` : "";
-  const subject = `Email campaign report · ${nice(dayKey, { weekday: "long", day: "numeric", month: "long" })}: ${n(day.total.sent)} sent, ${n(day.total.replies)} ${day.total.replies === 1 ? "reply" : "replies"}`;
-  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f6f7f9;font-family:Arial,Helvetica,sans-serif;color:#1b2430">
-<div style="max-width:640px;margin:0 auto;padding:20px 16px">
-<h1 style="font-size:18px;margin:0 0 4px">Email campaign report</h1>
-<p style="margin:0 0 16px;color:#6b7684;font-size:13px">${h(nice(dayKey, { weekday: "long", day: "numeric", month: "long", year: "numeric" }))}</p>
-<p style="font-size:15px;margin:0 0 14px"><b>${n(day.total.sent)}</b> emails sent · <b>${n(day.total.replies)}</b> replies · <b>${n(day.total.clicks)}</b> link clicks · <b>${n(day.total.enquiries)}</b> website enquiries · ${pct(day.total.bounced, day.total.sent)} bounced</p>
-${brandTable({ ...day.brands, all: day.total }, s, cols)}
-${link ? `<p style="margin:20px 0"><a href="${h(link)}" style="background:#16202e;color:#fff;padding:10px 16px;text-decoration:none;font-size:14px">View the full report</a></p>` : ""}
-<p style="color:#6b7684;font-size:12px;margin-top:18px">${h(notes(d)[0])}</p>
-</div></body></html>`;
+  const link = reportCfg.token ? `${reportCfg.baseUrl}/report/${encodeURIComponent(reportCfg.token)}?range=yesterday` : "";
+  const subject = `Campaign report · ${nice(dayKey, { weekday: "long", day: "numeric", month: "long" })}: ${n(day.total.sent)} sent, ${n(day.total.replies)} ${day.total.replies === 1 ? "reply" : "replies"}`;
+  const serif = "Georgia,'Times New Roman',serif", sans = "Helvetica,Arial,sans-serif";
+  const kpi = (k, sub) => `<td width="50%" valign="top" style="padding:5px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fffdf9;border:1px solid #e7dfd2;border-left:3px solid ${METRIC[k].color};border-radius:10px"><tr><td style="padding:12px 14px">
+<div style="font:600 11px ${sans};letter-spacing:.08em;text-transform:uppercase;color:${METRIC[k].color}">${METRIC[k].name}</div>
+<div style="font:700 28px ${sans};letter-spacing:-.02em;color:#191714;margin-top:4px">${n(day.total[k])}</div>
+<div style="font:12px ${sans};color:#857b6e;margin-top:2px">${sub}</div></td></tr></table></td>`;
+  const brandRow = (b) => `<tr><td style="padding:10px 12px;border-bottom:1px solid #f1ebe1;font:15px ${serif};color:#191714"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${BRAND_COLOR[b]};margin-right:8px"></span>${h(label(b))}</td>${
+    ["sent", "replies", "clicks", "enquiries"].map(k => `<td align="right" style="padding:10px 6px;border-bottom:1px solid #f1ebe1;font:14px ${sans};color:${day.brands[b][k] && k !== "sent" ? METRIC[k].color : "#191714"};${day.brands[b][k] && k !== "sent" ? "font-weight:700;" : ""}">${n(day.brands[b][k])}</td>`).join("")}</tr>`;
+  const th = (x) => `<th align="right" style="padding:8px 6px;font:600 10px ${sans};letter-spacing:.06em;text-transform:uppercase;color:#857b6e;border-bottom:1px solid #e7dfd2">${x}</th>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
+<body style="margin:0;background:#f7f3ec">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f3ec"><tr><td align="center" style="padding:20px 12px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px">
+<tr><td style="background:#16130f;border-radius:14px 14px 0 0;padding:24px 22px;border-bottom:3px solid #c8892b">
+<div style="font:600 11px ${sans};letter-spacing:.22em;text-transform:uppercase;color:#d9b77c">Email campaign report</div>
+<div style="font:400 26px ${serif};color:#f3eadb;margin-top:6px">${h(nice(dayKey, { weekday: "long", day: "numeric", month: "long" }))}</div>
+<div style="font:13px ${sans};color:#cfc3ae;margin-top:6px">${BRANDS.map(b => `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${BRAND_COLOR[b]};margin-right:6px"></span>${h(label(b))}`).join(" &nbsp; ")}</div>
+</td></tr>
+<tr><td style="background:#f7f3ec;padding:14px 6px 4px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr>${kpi("sent", "across all brands")}${kpi("replies", pct(day.total.replies, day.total.sent) + " reply rate")}</tr>
+<tr>${kpi("clicks", pct(day.total.clicks, day.total.sent) + " click rate")}${kpi("enquiries", "HubSpot form fills")}</tr>
+<tr>${kpi("bounced", pct(day.total.bounced, day.total.sent) + " bounce rate")}${kpi("unsubscribes", "opted out")}</tr>
+</table></td></tr>
+<tr><td style="padding:10px 6px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fffdf9;border:1px solid #e7dfd2;border-radius:10px">
+<tr><th align="left" style="padding:8px 12px;font:600 10px ${sans};letter-spacing:.06em;text-transform:uppercase;color:#857b6e;border-bottom:1px solid #e7dfd2">By brand</th>${th("Sent")}${th("Replies")}${th("Clicks")}${th("Enq.")}</tr>
+${BRANDS.map(brandRow).join("")}</table></td></tr>
+${link ? `<tr><td align="center" style="padding:22px 6px 6px"><a href="${h(link)}" style="display:inline-block;background:#c8892b;color:#16130f;font:600 14px ${sans};text-decoration:none;padding:12px 22px;border-radius:999px">Open the full report &rarr;</a></td></tr>` : ""}
+<tr><td style="padding:16px 10px 4px;font:12px/1.5 ${sans};color:#857b6e">${h(notes(d)[0])}</td></tr>
+</table></td></tr></table></body></html>`;
   const text = [`Email campaign report: ${nice(dayKey, { weekday: "long", day: "numeric", month: "long" })}`, "",
     ...BRANDS.map(b => `${label(b)}: ${n(day.brands[b].sent)} sent, ${n(day.brands[b].replies)} replies, ${n(day.brands[b].clicks)} clicks, ${n(day.brands[b].enquiries)} enquiries`),
     `Total: ${n(day.total.sent)} sent, ${n(day.total.replies)} replies, ${n(day.total.clicks)} clicks, ${n(day.total.enquiries)} enquiries, ${n(day.total.bounced)} bounced`,
