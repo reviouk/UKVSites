@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Creates (or refreshes) the two cold-email campaigns — one per brand — with the
- * 3-step sequence (tariff opener, recent events, tax quirk) at +0, +10, +13 days.
+ * 3-step sequence (tariff opener, recent events, tax quirk) at +0, +3, +4 days (gap after the previous step).
  * Copy is brand-specific: Market Watcher = market-intelligence voice ("the signal",
  * "Download the Whisky Guide"); The Invest Chronicle = editorial voice ("briefing").
  * Campaigns are created PAUSED; edit on /admin/campaigns/:id, enrol, then activate.
@@ -71,7 +71,7 @@ ${B.brand}
     },
     // 2. Recent events
     {
-      delay_days: 10,
+      delay_days: 3,
       subject: mw ? "Off the screen while markets wobble" : "A quieter place for part of your money",
       preheader: mw
         ? "Inflation near 4%, gold's worst October since 2008 — and an asset with no ticker."
@@ -97,7 +97,7 @@ ${B.brand}
     },
     // 3. Email 3 — the tax quirk
     {
-      delay_days: 13,
+      delay_days: 4,
       subject: mw ? "The HMRC quirk on whisky casks" : "The tax quirk that makes casks interesting",
       preheader: mw
         ? "Why a maturing cask is a 'wasting asset' — and what that can mean at sale."
