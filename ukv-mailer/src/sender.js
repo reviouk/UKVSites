@@ -26,8 +26,17 @@ export function warmupCap(m) {
   return week < WARMUP_STEPS.length ? WARMUP_STEPS[week] : Infinity;
 }
 /** Hard ceiling for a mailbox today, before the daily total is shared out. */
-export function hardCap(m) {
-  return Math.max(0, Math.min(m.daily_cap, cfg.mailboxDailyCap, warmupCap(m)));
+export function hardCap(m, mult = 1) {
+  return Math.max(0, Math.min(m.daily_cap * mult, cfg.mailboxDailyCap, warmupCap(m) * mult));
+}
+
+/**
+ * One-day boost: setting boost_day = "YYYY-MM-DD:<multiplier>" multiplies that day's total and
+ * every mailbox cap; it lapses by itself the next day (no clean-up needed).
+ */
+export async function boostToday() {
+  const m = String(await getSetting("boost_day", "") || "").match(/^(\d{4}-\d{2}-\d{2}):(\d+(?:\.\d+)?)$/);
+  return m && m[1] === nowLocal().dateKey ? Math.max(1, Number(m[2])) : 1;
 }
 
 /**
@@ -37,12 +46,13 @@ export function hardCap(m) {
  */
 export async function allowances() {
   const { total } = await effectiveDailyTotal();
+  const mult = await boostToday();
   const boxes = await all("SELECT * FROM mailboxes WHERE enabled AND smtp_pass IS NOT NULL AND smtp_pass <> '' ORDER BY id");
   const out = new Map();
   let remaining = total, left = boxes.length;
-  for (const m of [...boxes].sort((a, b) => hardCap(a) - hardCap(b))) {
-    const share = Math.min(hardCap(m), Math.ceil(remaining / Math.max(1, left)));
-    out.set(m.id, Math.min(hardCap(m), share + 3));
+  for (const m of [...boxes].sort((a, b) => hardCap(a, mult) - hardCap(b, mult))) {
+    const share = Math.min(hardCap(m, mult), Math.ceil(remaining / Math.max(1, left)));
+    out.set(m.id, Math.min(hardCap(m, mult), share + 3));
     remaining -= share; left--;
   }
   return { total, boxes, allowances: out };
@@ -83,6 +93,10 @@ export async function todaysCounts() {
  * Returns { total, day, phase }.
  */
 export async function effectiveDailyTotal() {
+  const base = await baseDailyTotal(), mult = await boostToday();
+  return mult === 1 ? base : { ...base, total: Math.round(base.total * mult), phase: `${base.phase}; boosted x${mult} today` };
+}
+async function baseDailyTotal() {
   const target = Number(await getSetting("daily_total", cfg.dailyTotal));
   const start = Number(await getSetting("ramp_start_total", 300));
   const hold = Number(await getSetting("ramp_hold_days", 7));
