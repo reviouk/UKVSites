@@ -148,6 +148,7 @@ const ICON = {
   unsubscribes: '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="m17 8 5 5"/><path d="m22 8-5 5"/>',
   calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   layers: '<path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
+  trend: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
 };
 const svg = (name, size = 18) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
@@ -164,6 +165,25 @@ function notes(r) {
   return list;
 }
 
+/**
+ * Planned ramp to full volume, all brands, emails per day: one "YYYY-MM-DD: N" per line, each
+ * holding until the next. Edited in Admin > Client report (setting report_ramp_plan).
+ */
+export const DEFAULT_RAMP_PLAN = `2026-11-01: 50
+2026-11-05: 150
+2026-11-06: 200
+2026-11-16: 250
+2026-11-30: 400
+2026-12-07: 650
+2026-12-14: 1000`;
+export function parseRampPlan(text) {
+  return String(text || "").split(/\r?\n/)
+    .map(l => l.match(/^\s*(\d{4}-\d{2}-\d{2})\s*[:,=]?\s*(\d+)\s*$/)).filter(Boolean)
+    .map(m => ({ day: m[1], v: Number(m[2]) }))
+    .sort((a, b) => (a.day < b.day ? -1 : 1));
+}
+export async function rampPlan() { return parseRampPlan(await getSetting("report_ramp_plan", DEFAULT_RAMP_PLAN)); }
+
 /** Client page: 90 days of daily figures embedded as JSON; filters (period, brand, chart metric) run in the browser. */
 export async function renderClientPage() {
   const to = todayKey(), from = addDays(to, -89);
@@ -172,6 +192,7 @@ export async function renderClientPage() {
     today: to, yesterday: yesterdayKey(),
     brands: BRANDS.map(b => ({ key: b, name: label(b), color: BRAND_COLOR[b] })),
     metrics: Object.fromEntries(Object.entries(METRIC).map(([k, v]) => [k, { ...v, icon: svg(k, 20) }])),
+    ramp: await rampPlan(),
     days: r.days.slice().reverse().map(d => ({ day: d.day, b: Object.fromEntries(BRANDS.map(b => [b, d.brands[b]])) })),
   };
   const json = JSON.stringify(data).replace(/</g, "\\u003c");
@@ -239,6 +260,10 @@ section{margin-top:28px}
 .chart{width:100%;height:240px;display:block}
 .chart .grid{stroke:#eee6d8}.chart text{font:11px var(--sans);fill:var(--muted)}
 .chart rect.bar{transition:opacity .15s}.chart g.col:hover rect.bar{opacity:.8}
+.ramp{height:260px}.ramp .plan{fill:none;stroke:var(--ink);stroke-width:2;stroke-dasharray:6 5;stroke-linejoin:round}
+.ramp .plan.done{stroke-dasharray:none;opacity:.55}.ramp .today{stroke:var(--amber);stroke-width:1.5}.ramp text.tl{fill:var(--amber);font-weight:600}
+.ramp text.goal{fill:var(--ink);font-weight:600;font-size:12px}
+.rampnow{font-size:13px;color:var(--ink2)}.rampnow b{font-family:var(--serif);font-weight:600;font-size:16px;color:var(--ink)}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--ink2);flex-wrap:wrap}
 .empty{fill:var(--muted);font:13px var(--sans)}
 /* table */
@@ -269,6 +294,8 @@ footer{color:var(--muted);font-size:12px;margin-top:26px;text-align:center}
 <main class="wrap">
  <div class="period"><h2 id="ptitle"></h2><span id="psub"></span></div>
  <div class="kpis" id="kpis"></div>
+ <section class="card" id="rampcard"><div class="sec-h"><h3>${svg("trend", 16)}Ramp-up to full volume</h3><span class="rampnow" id="rampnow"></span></div>
+  <svg class="chart ramp" id="ramp" role="img" aria-label="Emails sent per day against the planned ramp-up"></svg><div class="legend" id="ramplegend"></div></section>
  <section><div class="sec-h"><h3>By brand</h3></div><div class="split" id="split"></div></section>
  <section class="card"><div class="sec-h"><h3>Daily trend</h3><div class="seg" id="metric" role="group" aria-label="Chart metric">
   <button data-m="sent">Sent</button><button data-m="replies">Replies</button><button data-m="clicks">Clicks</button><button data-m="enquiries">Form completions</button><button data-m="bounced">Bounces</button></div></div>
@@ -309,7 +336,7 @@ function render(){
   $("#split").innerHTML=D.brands.filter(b=>bk.includes(b.key)).map(b=>{const x=sum(rows,[b.key]);const sh=all.sent?100*x.sent/all.sent:0;
     return '<div class="brand" style="--bc:'+b.color+'"><div class="top"><span class="nm">'+b.name+'</span><span class="big num">'+fmt(x.sent)+'</span></div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)"><span>emails sent</span><span>'+sh.toFixed(0)+'% of volume</span></div><div class="share"><i style="width:'+sh+'%"></i></div><div class="rows">'+
     ["replies","clicks","enquiries","bounced"].map(k=>{const m=D.metrics[k];return '<div class="row" style="--c:'+m.color+'">'+m.icon.replace('width="20" height="20"','width="16" height="16"')+m.name+'<b>'+fmt(x[k])+'</b></div>'}).join("")+'</div></div>'}).join("");
-  chart(rows,bk);table(rows,bk,s);
+  ramp();chart(rows,bk);table(rows,bk,s);
   try{const q=new URLSearchParams({range:st.r,brand:st.b});if(st.r==="custom"){q.set("from",f);q.set("to",t)}history.replaceState(null,"","?"+q)}catch(e){}
 }
 function chart(rows,bk){
@@ -329,6 +356,34 @@ function chart(rows,bk){
   if(!cols.some(c=>c.v.some(p=>p.v)))g+='<text class="empty" x="'+(W/2)+'" y="'+(H/2)+'" text-anchor="middle">No '+mc.name.toLowerCase()+' in this period yet</text>';
   el.setAttribute("viewBox","0 0 "+W+" "+H);el.innerHTML=g;
   $("#legend").innerHTML=m==="sent"?D.brands.filter(b=>bk.includes(b.key)).map(b=>'<span><span class="dot" style="background:'+b.color+'"></span>'+b.name+'</span>').join(""):'<span><span class="dot" style="background:'+mc.color+'"></span>'+mc.name+(bk.length>1?" (lighter shade: "+D.brands.find(b=>b.key===bk[1]).name+")":"")+'</span>';
+}
+function ramp(){
+  const plan=D.ramp||[];if(!plan.length){$("#rampcard").style.display="none";return}
+  const el=$("#ramp"),W=el.clientWidth||900,H=260,P={l:40,r:16,t:22,b:28};
+  const goal=plan[plan.length-1],start=plan[0].day<first?first:plan[0].day,end=add(goal.day>D.today?goal.day:D.today,4);
+  const keys=[];for(let k=start;k<=end;k=add(k,1))keys.push(k);
+  const byDay=Object.fromEntries(D.days.map(d=>[d.day,d.b]));
+  const planAt=k=>{let v=0;plan.forEach(p=>{if(p.day<=k)v=p.v});return v};
+  const sentAt=k=>D.brands.reduce((a,b)=>a+(((byDay[k]||{})[b.key]||{}).sent||0),0);
+  const max=Math.max(1,...keys.map(planAt),...keys.map(sentAt));
+  const raw=max*1.08/5,mag=Math.pow(10,Math.floor(Math.log10(raw))),tick=[1,2,2.5,5,10].map(f=>f*mag).find(s=>s>=raw),top=tick*5;
+  const iw=W-P.l-P.r,ih=H-P.t-P.b,bw=iw/keys.length,y=v=>P.t+ih-ih*v/top,xL=i=>P.l+i*bw;
+  let g="";for(let i=0;i<=5;i++){const v=tick*i;g+='<line class="grid" x1="'+P.l+'" x2="'+(W-P.r)+'" y1="'+y(v)+'" y2="'+y(v)+'"/><text x="'+(P.l-6)+'" y="'+(y(v)+4)+'" text-anchor="end">'+fmt(Math.round(v))+'</text>'}
+  const every=Math.ceil(keys.length/(W<560?5:10));
+  keys.forEach((k,i)=>{let acc=0;const x=xL(i)+bw*.15,w=Math.max(1.5,bw*.7);let bars="";
+    if(k<=D.today)D.brands.forEach(b=>{const v=(((byDay[k]||{})[b.key]||{}).sent)||0;if(!v)return;bars+='<rect class="bar" x="'+x+'" y="'+y(acc+v)+'" width="'+w+'" height="'+(y(acc)-y(acc+v))+'" rx="'+Math.min(3,w/3)+'" fill="'+b.color+'"/>';acc+=v});
+    g+='<g class="col"><title>'+nice(k)+': '+(k<=D.today?fmt(sentAt(k))+' sent'+(k===D.today?' so far':'')+' · ':'')+'plan '+fmt(planAt(k))+'/day</title><rect x="'+xL(i)+'" y="'+P.t+'" width="'+bw+'" height="'+ih+'" fill="transparent"/>'+bars+'</g>';
+    if(i%every===0)g+='<text x="'+(xL(i)+bw/2)+'" y="'+(H-8)+'" text-anchor="middle">'+nice(k,{day:"numeric",month:"short"})+'</text>'});
+  const ti=keys.indexOf(D.today);
+  const path=(from,to)=>{let d="";for(let i=from;i<=to;i++){const v=planAt(keys[i]);d+=(i===from?"M":"L")+xL(i)+","+y(v)+"L"+(xL(i)+bw)+","+y(v)}return d};
+  if(ti>0)g+='<path class="plan done" d="'+path(0,ti)+'"/>';
+  g+='<path class="plan" d="'+path(Math.max(0,ti),keys.length-1)+'"/>';
+  if(ti>=0){const tx=xL(ti)+bw/2;g+='<line class="today" x1="'+tx+'" x2="'+tx+'" y1="'+(P.t-6)+'" y2="'+(P.t+ih)+'"/><text class="tl" x="'+tx+'" y="'+(P.t-10)+'" text-anchor="'+(ti>keys.length-4?"end":"middle")+'">Today</text>'}
+  const gi=keys.indexOf(goal.day);if(gi>=0)g+='<text class="goal" x="'+Math.min(W-P.r,xL(gi))+'" y="'+(y(goal.v)-8)+'" text-anchor="'+(gi>keys.length*0.7?"end":"start")+'">'+fmt(goal.v)+' a day</text>';
+  el.setAttribute("viewBox","0 0 "+W+" "+H);el.innerHTML=g;
+  const now=planAt(D.today);
+  $("#rampnow").innerHTML='Planned now <b>'+fmt(now)+'</b>/day · full volume <b>'+fmt(goal.v)+'</b>/day '+(goal.day>D.today?'from '+nice(goal.day,{day:"numeric",month:"long"}):'reached');
+  $("#ramplegend").innerHTML=D.brands.map(b=>'<span><span class="dot" style="background:'+b.color+'"></span>'+b.name+' sent</span>').join("")+'<span><svg width="22" height="8" style="vertical-align:1px;margin-right:6px"><line x1="0" x2="22" y1="4" y2="4" stroke="#191714" stroke-width="2" stroke-dasharray="6 5"/></svg>Planned daily volume</span>';
 }
 function table(rows,bk,s){
   const ks=["sent","replies","clicks","enquiries","bounced","unsubscribes"];

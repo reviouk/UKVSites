@@ -15,7 +15,7 @@ import { cbState, recentEvents, tick as callbackTick } from "./callbacks.js";
 import { verifyMailbox } from "./mailer.js";
 import { PROVIDERS, HOLD, routes, pools, providerCounts } from "./routing.js";
 import { escapeHtml as h, toHtml, merge } from "./templates.js";
-import { reportCfg, reportState, renderEmail, sendReportEmail, emailReady, yesterdayKey } from "./report.js";
+import { reportCfg, reportState, renderEmail, sendReportEmail, emailReady, yesterdayKey, DEFAULT_RAMP_PLAN, parseRampPlan } from "./report.js";
 
 export const admin = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
@@ -541,10 +541,19 @@ admin.get("/report", async (req, res) => {
 <small>To: ${h(reportCfg.to.join(", ") || "(not set)")}${reportCfg.cc.length ? ` · Cc: ${h(reportCfg.cc.join(", "))}` : ""} · From: ${h(reportCfg.from || "(not set)")} · Last result: ${h(reportState.lastResult || "–")}</small>
 ${missing.length ? `<br><small class="bad">Missing settings: ${h(missing.join(", "))}</small>` : ""}
 <br><small>Turn on by setting REPORT_EMAIL_ENABLED=true. Market Watcher figures from outside campaigns: ${reportCfg.instantlyKey ? "connected" : "INSTANTLY_REPORT_API_KEY not set"}.</small></div>
+<div class="box"><form method="post" action="/admin/report/ramp"><b>Ramp-up plan</b> (shown as the dashed line on the client page; all brands, emails per day, one <code>YYYY-MM-DD: number</code> per line, each holding until the next)<br>
+<textarea name="plan" rows="8" style="width:260px;font-family:monospace">${h(await getSetting("report_ramp_plan", DEFAULT_RAMP_PLAN))}</textarea><br><button>Save plan</button></form></div>
 <div class="box"><form method="get" class="inline">Preview day <input type="text" name="day" value="${h(day)}" style="width:130px"> <button class="sec">Preview</button></form>
 <form method="post" action="/admin/report/test" class="inline" style="margin-left:16px">Send a test of this day to <input type="text" name="to" placeholder="you@example.com" style="width:220px"><input type="hidden" name="day" value="${h(day)}"> <button>Send test</button></form></div>
 <p><b>Subject:</b> ${h(preview.subject)}</p>
 <iframe srcdoc="${srcdoc}" style="width:100%;height:760px;border:1px solid #e3e6ea;background:#fff"></iframe>`, flashOf(req)));
+});
+
+admin.post("/report/ramp", async (req, res) => {
+  const plan = parseRampPlan(req.body.plan);
+  if (!plan.length) return redirect(res, "/admin/report", "Error: no valid lines (use YYYY-MM-DD: number)");
+  await setSetting("report_ramp_plan", plan.map(p => `${p.day}: ${p.v}`).join("\n"));
+  redirect(res, "/admin/report", `Ramp-up plan saved (${plan.length} steps)`);
 });
 
 admin.post("/report/test", async (req, res) => {
