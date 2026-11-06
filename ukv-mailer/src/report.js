@@ -17,11 +17,15 @@
  */
 import nodemailer from "nodemailer";
 import { timingSafeEqual } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { Router } from "express";
 import { cfg, SITES, nowLocal } from "./config.js";
 import { all, getSetting, setSetting } from "./db.js";
 import { escapeHtml as h } from "./templates.js";
 
+// UKV International logo (white + gold, for the dark banner), embedded so the page needs no static route.
+let LOGO = "";
+try { LOGO = "data:image/png;base64," + readFileSync(new URL("./assets/ukv-logo.png", import.meta.url)).toString("base64"); } catch {}
 const env = (k, d = "") => process.env[k] ?? d;
 export const reportCfg = {
   token: env("REPORT_TOKEN"),
@@ -213,6 +217,7 @@ header{position:relative;overflow:hidden;color:#f3eadb;background:
 header::after{content:"";position:absolute;inset:0;opacity:.07;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E")}
 .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
 .head{position:relative;z-index:1;padding-top:34px;padding-bottom:30px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.logo{display:block;height:58px;width:auto;margin-bottom:16px}
 .eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#d9b77c}
 h1{font-family:var(--serif);font-weight:400;font-size:clamp(28px,5vw,40px);line-height:1.1;margin:6px 0 6px}
 .brands-line{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:#cfc3ae}
@@ -276,11 +281,11 @@ tr.zero td{color:#b3a999}tr.tot td{font-weight:600;border-top:2px solid var(--li
 td .chip{display:inline-block;min-width:22px;padding:1px 7px;border-radius:99px;background:var(--t);color:var(--c);font-weight:600}
 .notes{display:grid;gap:8px;font-size:13px;color:var(--ink2)}.notes p{margin:0;display:flex;gap:10px}.notes svg{color:var(--muted);flex:none;margin-top:2px}
 footer{color:var(--muted);font-size:12px;margin-top:26px;text-align:center}
-@media (max-width:560px){.kpi .v{font-size:28px}.kpis{grid-template-columns:1fr 1fr}.rows{grid-template-columns:1fr}.head{padding-top:26px;padding-bottom:22px}.updated{text-align:left}.filters{position:static}.filters .wrap{gap:8px}.fgroup{width:100%}.seg button{padding:6px 10px}}
+@media (max-width:560px){.kpi .v{font-size:28px}.kpis{grid-template-columns:1fr 1fr}.rows{grid-template-columns:1fr}.head{padding-top:26px;padding-bottom:22px}.logo{height:46px;margin-bottom:12px}.updated{text-align:left}.filters{position:static}.filters .wrap{gap:8px}.fgroup{width:100%}.seg button{padding:6px 10px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body>
 <header><div class="wrap head">
- <div><div class="eyebrow">Email campaign report</div><h1>Outreach performance</h1>
+ <div>${LOGO ? `<img class="logo" src="${LOGO}" alt="UKV International">` : ""}<div class="eyebrow">Email campaign report</div><h1>Outreach performance</h1>
  <div class="brands-line">${data.brands.map(b => `<span><i style="background:${b.color}"></i>${h(b.name)}</span>`).join("")}</div></div>
  <div class="updated">Updated ${h(updated)}<br>Figures refresh every time this page is opened</div>
 </div></header>
