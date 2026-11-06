@@ -9,11 +9,13 @@
  *   external_lead_source                   Marketwatcher | investchronicles  (existing dropdown)
  *   data_source                            free text, e.g. "LUSHA LEADS"
  *   ukv_replied / ukv_unsubscribed         new boolean flags
+ *   ukv_nurture_completed / _date          site that finished all steps + when (syncCompletions);
+ *                                          feeds the per-website "Nurture completed" active lists
  *
  * Calls are queued and retried so a slow HubSpot never blocks tracking responses.
  */
 import { cfg, SITES } from "./config.js";
-import { q } from "./db.js";
+import { q, all } from "./db.js";
 
 const HS = "https://api.hubapi.com";
 const headers = () => ({ Authorization: `Bearer ${cfg.hubspot.token}`, "Content-Type": "application/json" });
@@ -49,6 +51,9 @@ export async function ensureProperties() {
     { name: "instantly_last_engaged", label: "Instantly Last Engaged", type: "string", fieldType: "text" },
     { name: "ukv_replied", label: "UKV Mailer Replied", type: "bool", fieldType: "booleancheckbox", options: BOOL_OPTIONS },
     { name: "ukv_unsubscribed", label: "UKV Mailer Unsubscribed", type: "bool", fieldType: "booleancheckbox", options: BOOL_OPTIONS },
+    { name: "ukv_nurture_completed", label: "UKV Nurture Completed", type: "enumeration", fieldType: "select",
+      options: Object.keys(SITES).map((k, i) => ({ label: SITES[k].label, value: k, displayOrder: i, hidden: false })) },
+    { name: "ukv_nurture_completed_date", label: "UKV Nurture Completed Date", type: "date", fieldType: "date" },
   ];
   for (const p of props) {
     const res = await fetch(`${HS}/crm/v3/properties/contacts`, {
@@ -57,6 +62,78 @@ export async function ensureProperties() {
     if (res.ok) console.log(`[hubspot] created property ${p.name}`);
     else if (res.status !== 409) console.warn(`[hubspot] could not create ${p.name}: ${res.status} ${await res.text()}`);
   }
+  await ensureNurtureLists();
+}
+
+// ---- "Nurture completed" lists (one per website) --------------------------------
+export const nurtureListName = (site) => `Nurture completed - ${SITES[site]?.label || site}`;
+export const nurtureState = { lists: {}, lastRun: null, lastResult: "" };
+
+async function ensureNurtureLists() {
+  for (const site of Object.keys(SITES)) {
+    const name = nurtureListName(site);
+    const found = await fetch(`${HS}/crm/v3/lists/object-type-id/0-1/name/${encodeURIComponent(name)}`, { headers: headers() });
+    if (found.ok) { nurtureState.lists[site] = (await found.json()).list?.listId; continue; }
+    const res = await fetch(`${HS}/crm/v3/lists`, {
+      method: "POST", headers: headers(),
+      body: JSON.stringify({
+        name, objectTypeId: "0-1", processingType: "DYNAMIC",
+        filterBranch: { filterBranchType: "OR", filters: [], filterBranches: [{ filterBranchType: "AND", filterBranches: [], filters: [{
+          filterType: "PROPERTY", property: "ukv_nurture_completed",
+          operation: { operationType: "ENUMERATION", operator: "IS_ANY_OF", values: [site] },
+        }] }] },
+      }),
+    });
+    if (res.ok) { nurtureState.lists[site] = (await res.json()).list?.listId; console.log(`[hubspot] created list "${name}" (${nurtureState.lists[site]})`); }
+    else console.warn(`[hubspot] could not create list "${name}": ${res.status} ${(await res.text()).slice(0, 300)}`);
+  }
+}
+
+/**
+ * Tag every contact whose enrolment has had all steps (status 'completed') with
+ * ukv_nurture_completed=<site> + date, so they drop into that website's list.
+ * Bounced contacts are skipped. Each enrolment is tagged once (enrolments.hubspot_completed_at).
+ */
+export async function syncCompletions() {
+  if (!enabled()) { nurtureState.lastResult = "HubSpot disabled"; return 0; }
+  nurtureState.lastRun = new Date();
+  let total = 0;
+  for (;;) {
+    const rows = await all(`SELECT e.id, c.email, c.first_name, c.last_name, c.company, c.phone, c.data_source, ca.site, ca.name campaign,
+        (SELECT max(s.sent_at) FROM sends s WHERE s.enrolment_id=e.id AND s.status<>'failed') finished_at
+      FROM enrolments e JOIN contacts c ON c.id=e.contact_id JOIN campaigns ca ON ca.id=e.campaign_id
+      WHERE e.status='completed' AND e.hubspot_completed_at IS NULL AND c.status<>'bounced'
+        AND NOT EXISTS (SELECT 1 FROM sends s WHERE s.enrolment_id=e.id AND s.status='bounced')
+      ORDER BY e.id LIMIT 100`);
+    if (!rows.length) break;
+    const inputs = rows.map(r => ({ idProperty: "email", id: r.email, properties: {
+      email: r.email,
+      ...(r.first_name ? { firstname: r.first_name } : {}),
+      ...(r.last_name ? { lastname: r.last_name } : {}),
+      ...(r.company ? { company: r.company } : {}),
+      ...(r.phone ? { phone: r.phone } : {}),
+      ...(SITES[r.site]?.leadSource ? { external_lead_source: SITES[r.site].leadSource } : {}),
+      ...(mapDataSource(r.data_source) ? { data_source: mapDataSource(r.data_source) } : {}),
+      instantly_campaign: r.campaign,
+      ukv_nurture_completed: r.site,
+      ukv_nurture_completed_date: new Date(r.finished_at || Date.now()).toISOString().slice(0, 10),
+    } }));
+    const res = await fetch(`${HS}/crm/v3/objects/contacts/batch/upsert`, { method: "POST", headers: headers(), body: JSON.stringify({ inputs }) });
+    if (res.status === 429) { await sleep(10000); continue; }
+    if (!res.ok) throw new Error(`completion upsert ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    await q("UPDATE enrolments SET hubspot_completed_at=now() WHERE id = ANY($1)", [rows.map(r => r.id)]);
+    total += rows.length;
+    await sleep(300);
+  }
+  nurtureState.lastResult = `${new Date().toISOString().slice(0, 16)}: tagged ${total}`;
+  if (total) console.log(`[hubspot] nurture completed: tagged ${total} contact(s)`);
+  return total;
+}
+
+export function startCompletionSync() {
+  const run = () => syncCompletions().catch(e => { nurtureState.lastResult = `error: ${e.message}`; console.warn("[hubspot]", e.message); });
+  setTimeout(run, 120_000);
+  setInterval(run, 30 * 60_000);
 }
 
 // ---- queue -----------------------------------------------------------------

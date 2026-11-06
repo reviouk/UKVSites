@@ -196,3 +196,6 @@ CREATE TABLE IF NOT EXISTS verify_jobs (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   imported_at TIMESTAMPTZ
 );
+
+-- When this enrolment's "nurture completed" tag was written to HubSpot (hubspot.js syncCompletions).
+ALTER TABLE enrolments ADD COLUMN IF NOT EXISTS hubspot_completed_at TIMESTAMPTZ;

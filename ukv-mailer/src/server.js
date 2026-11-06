@@ -5,7 +5,7 @@ import { tracking } from "./tracking.js";
 import { admin } from "./admin.js";
 import { startSender, state as senderState } from "./sender.js";
 import { startReplyPoller, replyState } from "./replies.js";
-import { ensureProperties } from "./hubspot.js";
+import { ensureProperties, startCompletionSync, nurtureState } from "./hubspot.js";
 import { startConversionSync } from "./conversions.js";
 import { startCallbacks, cbState } from "./callbacks.js";
 import { reportRoutes, startReportEmails, reportState } from "./report.js";
@@ -21,6 +21,7 @@ app.get("/healthz", (_req, res) => res.json({
   imap: replyState.configured ? replyState.lastResult : "disabled",
   callbacks: { enabled: cbState.enabled, lastTick: cbState.lastTick, result: cbState.lastResult },
   reportEmail: reportState.lastResult,
+  nurtureCompleted: { lists: nurtureState.lists, result: nurtureState.lastResult },
 }));
 
 app.use(tracking);
@@ -37,4 +38,5 @@ app.listen(cfg.port, async () => {
   startConversionSync();
   startCallbacks();
   startReportEmails();
+  startCompletionSync();
 });
