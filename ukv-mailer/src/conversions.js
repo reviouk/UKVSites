@@ -4,6 +4,9 @@
  * that happened AFTER our first email to them.
  *
  *   contacts.converted_at / contacts.conversion_event
+ *
+ * The websites' forms don't ask for a phone number, so when someone converts and their
+ * HubSpot record has no phone, we copy the number from our spreadsheet data onto it.
  */
 import { cfg } from "./config.js";
 import { q, all, setSetting } from "./db.js";
@@ -15,7 +18,7 @@ let busy = false;
 export function startConversionSync() {
   if (!cfg.hubspot.enabled || !cfg.hubspot.token) return;
   setTimeout(() => syncConversions().catch(e => console.warn("[conversions]", e.message)), 60_000);
-  setInterval(() => syncConversions().catch(e => console.warn("[conversions]", e.message)), 60 * 60_000);
+  setInterval(() => syncConversions().catch(e => console.warn("[conversions]", e.message)), 10 * 60_000);
 }
 
 export async function syncConversions() {
@@ -26,22 +29,23 @@ export async function syncConversions() {
     await q("ALTER TABLE contacts ADD COLUMN IF NOT EXISTS converted_at TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS conversion_event TEXT, ADD COLUMN IF NOT EXISTS instantly_sent_at TIMESTAMPTZ");
     // Everyone we have emailed who has not converted yet (most recent first; cap per run to respect rate limits)
     const rows = await all(`
-      SELECT c.id, c.email, LEAST(min(s.sent_at), c.instantly_sent_at) AS first_sent
+      SELECT c.id, c.email, c.phone, LEAST(min(s.sent_at), c.instantly_sent_at) AS first_sent
         FROM contacts c LEFT JOIN sends s ON s.contact_id = c.id AND s.status <> 'failed'
        WHERE c.converted_at IS NULL AND (s.id IS NOT NULL OR c.instantly_sent_at IS NOT NULL)
        GROUP BY c.id ORDER BY 3 DESC LIMIT 20000`);
-    let found = 0, checked = 0;
+    let found = 0, checked = 0, phones = 0;
     for (let i = 0; i < rows.length; i += 100) {
       const chunk = rows.slice(i, i + 100);
       const res = await fetch(`${HS}/crm/v3/objects/contacts/batch/read`, {
         method: "POST", headers: { Authorization: `Bearer ${cfg.hubspot.token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ idProperty: "email", properties: ["email", "first_conversion_date", "recent_conversion_date", "recent_conversion_event_name", "first_conversion_event_name", "num_conversion_events"], inputs: chunk.map(r => ({ id: r.email })) }),
+        body: JSON.stringify({ idProperty: "email", properties: ["email", "phone", "first_conversion_date", "recent_conversion_date", "recent_conversion_event_name", "first_conversion_event_name", "num_conversion_events"], inputs: chunk.map(r => ({ id: r.email })) }),
       });
       if (res.status === 429) { await sleep(10000); i -= 100; continue; }
       if (!res.ok && res.status !== 207) throw new Error(`batch read ${res.status}: ${(await res.text()).slice(0, 200)}`);
       const body = await res.json();
       checked += chunk.length;
       const byEmail = new Map(chunk.map(r => [r.email, r]));
+      const phoneUpdates = [];
       for (const r of body.results || []) {
         const p = r.properties || {};
         const email = (p.email || "").toLowerCase();
@@ -56,10 +60,20 @@ export async function syncConversions() {
           [ours.id, whenD, (p.recent_conversion_event_name || p.first_conversion_event_name || "form").slice(0, 200)]);
         await q("INSERT INTO events(contact_id,type,detail) VALUES($1,'conversion',$2)", [ours.id, (p.recent_conversion_event_name || "form").slice(0, 300)]);
         found++;
+        const phone = String(ours.phone || "").trim();
+        if (phone && !String(p.phone || "").trim()) phoneUpdates.push({ id: r.id, properties: { phone } });
+      }
+      if (phoneUpdates.length) {
+        const up = await fetch(`${HS}/crm/v3/objects/contacts/batch/update`, {
+          method: "POST", headers: { Authorization: `Bearer ${cfg.hubspot.token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ inputs: phoneUpdates }),
+        });
+        if (up.ok) phones += phoneUpdates.length;
+        else console.warn(`[conversions] phone update ${up.status}: ${(await up.text()).slice(0, 200)}`);
       }
       await sleep(250);
     }
-    convState.lastResult = `${checked} contacts checked, ${found} new conversion(s)`;
+    convState.lastResult = `${checked} contacts checked, ${found} new conversion(s), ${phones} phone number(s) added`;
     await setSetting("conversions_last_run", new Date().toISOString());
     if (found) console.log(`[conversions] ${convState.lastResult}`);
   } catch (e) {
