@@ -29,8 +29,8 @@ export const cfg = {
 // strings must match the option values in external_lead_source exactly (copied
 // from the Instantly connector's SITE_MAP).
 export const SITES = {
-  investchronicles: { label: "The Invest Chronicle", url: "https://investchronicles.com", leadSource: "investchronicles" },
-  marketwatcher:    { label: "Market Watcher",    url: "https://marketwatcher.co.uk",  leadSource: "Marketwatcher" },
+  investchronicles: { label: "The Invest Chronicle", url: "https://investchronicles.com", leadSource: "investchronicles", color: "#7a2230" },
+  marketwatcher:    { label: "Market Watcher",    url: "https://marketwatcher.co.uk",  leadSource: "Marketwatcher", color: "#1b8e67" },
 };
 // Tracking links (click redirect, open pixel, unsubscribe) are served from a brand
 // subdomain (TRACK_URL_INVESTCHRONICLES / TRACK_URL_MARKETWATCHER, e.g.

@@ -26,6 +26,7 @@ export function contactVars(contact, mailbox, site) {
     sender_name: mailbox?.display_name || "",
     sender_email: mailbox?.email || "",
     sender_first_name: (mailbox?.display_name || "").split(" ")[0],
+    brand_color: s.color || "#7a2230",
   };
 }
 
@@ -36,11 +37,27 @@ function titleCase(s) {
   return s.toLowerCase().replace(/(^|[\s'-])([a-z])/g, (m, p, c) => p + c.toUpperCase());
 }
 
-/** Turn plain-ish text (lines, blank-line paragraphs) into simple HTML. Leaves real HTML alone. */
+/**
+ * Turn plain-ish text (lines, blank-line paragraphs) into simple HTML. Leaves real HTML alone.
+ * Two block markers, each on a paragraph of its own (no images, so they stay light for spam filters):
+ *   [[button: Label]](url)   a text-style button in the brand colour ({{brand_color}})
+ *   [[video: Label]](url)    a "▶ Label" link; dropped entirely while url is empty or "none"
+ */
 export function toHtml(body) {
   const b = String(body || "");
   if (/<\s*(p|div|br|a|table|html)\b/i.test(b)) return b;
-  return b.trim().split(/\n{2,}/).map(p => `<p>${linkify(escapeHtml(p)).replace(/\n/g, "<br>")}</p>`).join("\n");
+  return b.trim().split(/\n{2,}/).map(p => block(p.trim()) ?? `<p>${linkify(escapeHtml(p)).replace(/\n/g, "<br>")}</p>`).filter(Boolean).join("\n");
+}
+
+function block(p) {
+  const m = p.match(/^\[\[(button|video)\s*:\s*([^\]]+)\]\]\(\s*([^)]*?)\s*\)$/i);
+  if (!m) return null;
+  const [, kind, label, rawUrl] = m;
+  const url = /^(https?:\/\/\S+|\{\{\s*site_url\s*\}\})$/i.test(rawUrl) ? escapeHtml(rawUrl) : "";
+  if (!url) return "";                                  // no usable link: leave the block out
+  if (kind.toLowerCase() === "video")
+    return `<p style="margin:18px 0"><a href="${url}" style="color:{{brand_color}};font-weight:600;text-decoration:none">▶ ${escapeHtml(label.trim())}</a></p>`;
+  return `<p style="margin:22px 0"><a href="${url}" style="display:inline-block;background:{{brand_color}};color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:1.2;padding:13px 24px;border-radius:4px;text-decoration:none">${escapeHtml(label.trim())}</a></p>`;
 }
 
 /** [text](url) -> styled link; bare URLs / {{site_url}} -> plain links. Runs on already-escaped text. */
