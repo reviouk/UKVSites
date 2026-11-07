@@ -186,14 +186,14 @@
 
   /* ---- Big centre play button ---- */
   .vplayer{position:relative}
-  .vplayer .vplay{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:96px;height:96px;border-radius:50%;
+  .vplayer .vplay{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:clamp(76px,10%,132px);height:auto;aspect-ratio:1;border-radius:50%;
     border:0;background:#7a2230;color:#ffffff;cursor:pointer;display:flex;align-items:center;justify-content:center;
     box-shadow:0 12px 34px rgba(0,0,0,.45);transition:transform .2s,background .2s}
   .vplayer .vplay:hover{background:#5e1925;transform:translate(-50%,-50%) scale(1.06)}
   .vplayer .vplay:focus-visible{outline:3px solid #fff;outline-offset:4px}
-  .vplayer .vplay svg{width:38px;height:38px;margin-left:6px}
+  .vplayer .vplay svg{width:40%;height:40%;margin-left:6%}
   .vplayer.playing .vplay{display:none}
-  @media(max-width:520px){.vplayer .vplay{width:72px;height:72px}.vplayer .vplay svg{width:28px;height:28px}}
+  
 </style>
 </head>
 <body>
