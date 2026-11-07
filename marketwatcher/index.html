@@ -212,6 +212,17 @@
     .strip .cell{border-right:none;border-bottom:1px solid var(--line)}
     .hero{gap:36px}
   }
+
+  /* ---- Big centre play button ---- */
+  .vplayer{position:relative}
+  .vplayer .vplay{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:96px;height:96px;border-radius:50%;
+    border:0;background:#23c08a;color:#04130d;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    box-shadow:0 12px 34px rgba(0,0,0,.45);transition:transform .2s,background .2s}
+  .vplayer .vplay:hover{background:#2ad79a;transform:translate(-50%,-50%) scale(1.06)}
+  .vplayer .vplay:focus-visible{outline:3px solid #fff;outline-offset:4px}
+  .vplayer .vplay svg{width:38px;height:38px;margin-left:6px}
+  .vplayer.playing .vplay{display:none}
+  @media(max-width:520px){.vplayer .vplay{width:72px;height:72px}.vplayer .vplay svg{width:28px;height:28px}}
 </style>
 </head>
 <body>
@@ -309,9 +320,12 @@
   <h2>Whisky cask ownership in under a minute</h2>
   <p class="intro">A short look at why private investors are adding Scotch whisky casks to their portfolios.</p>
   <div class="video-frame">
-    <video controls playsinline preload="metadata" poster="videos/whisky-cask-ownership.jpg">
+    <div class="vplayer">
+    <video playsinline preload="metadata" poster="videos/whisky-cask-ownership.jpg">
       <source src="videos/whisky-cask-ownership.mp4" type="video/mp4" />
     </video>
+    <button class="vplay" type="button" aria-label="Play video"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 4l15 8-15 8z"/></svg></button>
+    </div>
   </div>
   <div class="video-actions">
     <a class="btn btn-primary" href="#enquire" data-open-modal>Download Whisky Guide &rarr;</a>
@@ -481,6 +495,14 @@
 })();
 </script>
 
+<script>
+document.querySelectorAll('.vplayer').forEach(function(w){
+  var v=w.querySelector('video'), b=w.querySelector('.vplay');
+  b.addEventListener('click',function(){v.controls=true;v.play();});
+  v.addEventListener('play',function(){w.classList.add('playing');v.controls=true;});
+  v.addEventListener('ended',function(){w.classList.remove('playing');v.controls=false;v.currentTime=0;});
+});
+</script>
 <!-- HubSpot tracking code (UKV portal 4633795): page views, traffic sources, visitor history -->
 <script type="text/javascript" id="hs-script-loader" async defer src="https://js.hs-scripts.com/4633795.js"></script>
 </body>
