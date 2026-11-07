@@ -47,6 +47,19 @@
     background:var(--amber);border:1px solid var(--amber);
     padding:9px 16px;border-radius:8px;transition:background .2s,border-color .2s}
   nav .nav-cta:hover{background:#f0c45a;border-color:#f0c45a}
+  .nav-ctas{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+  nav .nav-video{font-size:.9rem;font-weight:600;color:var(--green);text-decoration:none;border:1px solid rgba(35,192,138,.5);
+    padding:9px 16px;border-radius:8px;transition:background .2s,border-color .2s}
+  nav .nav-video:hover{background:rgba(35,192,138,.12);border-color:var(--green)}
+  /* ---- Video feature ---- */
+  .video-feature{padding:20px 0 50px;scroll-margin-top:16px}
+  .video-feature h2{font-size:clamp(1.7rem,3.4vw,2.3rem);font-weight:800;letter-spacing:-.02em;line-height:1.12;margin:6px 0 8px}
+  .video-feature .intro{color:var(--muted);max-width:62ch;margin-bottom:18px}
+  .video-frame{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--panel)}
+  .video-frame video{display:block;width:100%;height:auto;background:#213538}
+  .video-feature .video-actions{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:18px}
+  .video-feature .risk{font-size:.78rem;color:#697485;max-width:70ch}
+  @media(max-width:520px){nav .nav-video,nav .nav-cta{padding:8px 12px;font-size:.84rem}}
 
   /* ---- Hero ---- */
   .hero{padding:70px 0 50px;display:grid;grid-template-columns:1.15fr .85fr;gap:54px;align-items:center}
@@ -220,7 +233,10 @@
 <div class="wrap">
   <nav>
     <div class="logo"><span class="mark">M</span> Market&nbsp;Watcher</div>
-    <a class="nav-cta" href="#enquire" data-open-modal>Download Whisky Guide</a>
+    <div class="nav-ctas">
+      <a class="nav-video" href="#video">&#9654;&nbsp;Watch video</a>
+      <a class="nav-cta" href="#enquire" data-open-modal>Download Whisky Guide</a>
+    </div>
   </nav>
 </div>
 
@@ -284,6 +300,22 @@
     <div class="row"><span class="k">Ownership</span><span class="v up">Full legal title</span></div>
     <div class="row"><span class="k">Storage</span><span class="v">HMRC-bonded</span></div>
     <div class="row"><span class="k">Daily volatility</span><span class="v">None</span></div>
+  </div>
+</section>
+
+<!-- ===== Video ===== -->
+<section class="video-feature wrap" id="video">
+  <div class="eyebrow">// watch: 47 seconds</div>
+  <h2>Whisky cask ownership in under a minute</h2>
+  <p class="intro">A short look at why private investors are adding Scotch whisky casks to their portfolios.</p>
+  <div class="video-frame">
+    <video controls playsinline preload="metadata" poster="videos/whisky-cask-ownership.jpg">
+      <source src="videos/whisky-cask-ownership.mp4" type="video/mp4" />
+    </video>
+  </div>
+  <div class="video-actions">
+    <a class="btn btn-primary" href="#enquire" data-open-modal>Download Whisky Guide &rarr;</a>
+    <p class="risk">Capital is at risk. Cask values can fall as well as rise. Past performance is not a reliable guide to future returns.</p>
   </div>
 </section>
 
