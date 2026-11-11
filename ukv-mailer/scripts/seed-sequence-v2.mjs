@@ -20,7 +20,7 @@ const BRAND = {
   investchronicles: { name: "The Invest Chronicle", cta: "Request the cask ownership briefing", noun: "the briefing" },
   marketwatcher:    { name: "Market Watcher",       cta: "Download the Whisky Guide",           noun: "the guide" },
 };
-const sign = (b) => `Best,\n{{sender_name}}\n${b.name}\n{{site_url}}`;
+const sign = (b) => `Best,\n${b.name}\n{{site_url}}`;   // brand only, never a persona name
 
 export function steps(site) {
   const b = BRAND[site], video = VIDEO_URL[site] || "none";

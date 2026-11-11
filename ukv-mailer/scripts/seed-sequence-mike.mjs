@@ -16,7 +16,7 @@ const BRAND = {
   investchronicles: { name: "The Invest Chronicle", cta: "Request the cask ownership briefing", video: "https://investchronicles.com/#video" },
   marketwatcher:    { name: "Market Watcher",       cta: "Download the Whisky Guide",           video: "https://marketwatcher.co.uk/#video" },
 };
-const sign = (b) => `Best,\n{{sender_name}}\n${b.name}\n{{site_url}}`;
+const sign = (b) => `Best,\n${b.name}\n{{site_url}}`;   // brand only, never a persona name
 const GLENROTHES = "https://www.thedrinksbusiness.com/2026/08/130-whisky-cask-bought-in-1971-now-valued-at-270000/";
 const TARIFF = "https://www.reuters.com/world/us/trump-says-he-will-lift-tariffs-restrictions-on-scotland-kentucky-whiskey-ties-2026-04-30/";
 
