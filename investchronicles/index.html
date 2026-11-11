@@ -387,8 +387,15 @@
       var c=modal.querySelector('.modal-close');if(c)c.focus();});
     if(conf)conf.addEventListener('click',reallyClose);
   }
-  /* Auto-open on landing */
-  window.addEventListener('load',function(){setTimeout(open,400);});
+  /* Auto-open 60 seconds after landing */
+  window.addEventListener('load',function(){setTimeout(function(){
+    if(modal.classList.contains('open'))return;
+    /* Don't interrupt someone watching the video: open when it ends or is paused */
+    var v=document.querySelector('#video video');
+    if(v&&!v.paused&&!v.ended){var once=function(){v.removeEventListener('pause',once);v.removeEventListener('ended',once);if(!modal.classList.contains('open'))open();};
+      v.addEventListener('pause',once);v.addEventListener('ended',once);return;}
+    open();
+  },60000);});
 })();
 </script>
 
