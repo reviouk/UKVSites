@@ -18,7 +18,7 @@ const BRAND = {
 };
 const sign = (b) => `Best,\n{{sender_name}}\n${b.name}\n{{site_url}}`;
 const GLENROTHES = "https://www.thedrinksbusiness.com/2026/08/130-whisky-cask-bought-in-1971-now-valued-at-270000/";
-const TARIFF = "https://www.thedrinksbusiness.com/2026/07/spirits-industry-responds-to-us-lifting-tariffs-on-scotch/";
+const TARIFF = "https://www.reuters.com/world/us/trump-says-he-will-lift-tariffs-restrictions-on-scotland-kentucky-whiskey-ties-2026-04-30/";
 
 export function steps(site) {
   const b = BRAND[site];
@@ -56,7 +56,7 @@ We are expecting US buyers to keep returning to the market, which could tighten 
 
 It's one of those changes that sounds simple but has quite a big knock-on effect.
 
-[How the industry reacted to the US lifting tariffs on Scotch](${TARIFF})
+[Reuters: Trump lifts tariffs on Scotch whisky](${TARIFF})
 
 It's often the surprises no one sees coming that move the market the most.
 
