@@ -56,7 +56,7 @@ So the spirit already maturing in bond, filled before the cutbacks, is a finite 
 
 None of this guarantees what a cask will be worth, and values can fall as well as rise. But it's the reason many people buy when the industry is quiet rather than when it's booming.
 
-[[button: ${b.cta}]]({{site_url}})
+[${b.cta}]({{site_url}})
 
 ${sign(b)}` },
     { delay_days: 4, subject: "A quieter home for part of your money",
@@ -73,7 +73,7 @@ There's also a tax point many people don't know. Because a little spirit evapora
 
 This is my last note for now. If you'd like a 15-minute call, reply with a time that suits you. Or start with ${b.noun}:
 
-[[button: ${b.cta}]]({{site_url}})
+[${b.cta}]({{site_url}})
 
 ${sign(b)}` },
   ];
