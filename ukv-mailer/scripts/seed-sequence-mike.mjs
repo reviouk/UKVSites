@@ -41,7 +41,7 @@ We currently have access to Glenrothes and selected Speyside casks, held in bond
 
 The £270,000 headline will attract attention. A small number of people will act on it.
 
-[${b.cta}]({{site_url}})
+[[button: ${b.cta}]]({{site_url}})
 
 Have a great rest of the week.
 
@@ -62,7 +62,7 @@ It's often the surprises no one sees coming that move the market the most.
 
 [[video: Watch: whisky cask ownership in under a minute]](${b.video})
 
-[${b.cta}]({{site_url}})
+[[button: ${b.cta}]]({{site_url}})
 
 ${sign(b)}` },
     { delay_days: 4, subject: "How rare whisky has performed over ten years",
@@ -85,7 +85,7 @@ The key benefits of whisky cask ownership:
 
 Feel free to explore more:
 
-[${b.cta}]({{site_url}})
+[[button: ${b.cta}]]({{site_url}})
 
 ${sign(b)}` },
   ];

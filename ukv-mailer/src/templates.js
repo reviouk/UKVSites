@@ -56,16 +56,20 @@ function block(p) {
   const url = /^(https?:\/\/\S+|\{\{\s*site_url\s*\}\})$/i.test(rawUrl) ? escapeHtml(rawUrl) : "";
   if (!url) return "";                                  // no usable link: leave the block out
   if (kind.toLowerCase() === "video")
-    return `<p style="margin:18px 0"><a href="${url}" style="color:{{brand_color}};font-weight:600;text-decoration:none">▶ ${escapeHtml(label.trim())}</a></p>`;
+    return `<p style="margin:18px 0"><a href="${url}" style="color:#666666;text-decoration:underline">▶ ${escapeHtml(label.trim())}</a></p>`;
   return `<p style="margin:22px 0"><a href="${url}" style="display:inline-block;background:{{brand_color}};color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:1.2;padding:13px 24px;border-radius:4px;text-decoration:none">${escapeHtml(label.trim())}</a></p>`;
 }
 
 /** [text](url) -> styled link; bare URLs / {{site_url}} -> plain links. Runs on already-escaped text. */
 function linkify(t) {
   // Plain text links only (no buttons) — reads like a personal email.
-  const A = (href, text, cta) => `<a href="${href}" style="color:#7a2230;${cta ? "font-weight:600;" : ""}text-decoration:underline">${text}</a>`;
+  // Links to the brand site ({{site_url}}) are the main call to action; any other link
+  // (press articles, sources) is a quieter secondary link.
+  const A = (href, text, cta) => cta
+    ? `<a href="${href}" style="color:{{brand_color}};font-weight:600;text-decoration:underline">${text}</a>`
+    : `<a href="${href}" style="color:#666666;text-decoration:underline">${text}</a>`;
   return t
-    .replace(/\[([^\]]+)\]\((\{\{\s*site_url\s*\}\}|https?:\/\/[^)\s]+)\)/g, (_, text, href) => A(href, text, true))
+    .replace(/\[([^\]]+)\]\((\{\{\s*site_url\s*\}\}|https?:\/\/[^)\s]+)\)/g, (_, text, href) => A(href, text, /site_url/.test(href)))
     .replace(/(^|[\s>])(https?:\/\/[^\s<]*[^\s<.,;:!?)])/g, (_, pre, url) => pre + A(url, url, false))
     .replace(/(^|[\s>])(\{\{\s*site_url\s*\}\})(?=$|[\s<.,])/g, (_, pre, tok) => pre + A(tok, tok, false));
 }
