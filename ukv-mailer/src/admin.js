@@ -164,7 +164,7 @@ admin.get("/campaigns/:id", async (req, res) => {
   const steps = await all("SELECT * FROM steps WHERE campaign_id=$1 ORDER BY position, variant", [c.id]);
   const vstats = await all(`
     SELECT COALESCE(s.variant,'Earlier copy') AS variant, count(*)::int AS sent, count(s.opened_at)::int AS opened, count(s.clicked_at)::int AS clicked, count(s.replied_at)::int AS replied
-      FROM sends s WHERE s.campaign_id=$1 AND s.status<>'failed' GROUP BY 1 ORDER BY 1`, [c.id]);
+      FROM sends s WHERE s.campaign_id=$1 AND s.status<>'failed' AND s.step_position=1 GROUP BY 1 ORDER BY 1`, [c.id]);
   const hasVariants = steps.some(s => s.variant !== "A") || vstats.some(v => v.variant !== "Earlier copy");
   const stats = await all(`
     SELECT s.step_position, count(*)::int AS sent, count(s.opened_at)::int AS opened, count(s.clicked_at)::int AS clicked, count(s.replied_at)::int AS replied

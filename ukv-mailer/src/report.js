@@ -137,7 +137,7 @@ export async function variantReport(dayKey) {
            count(*) FILTER (WHERE (s.sent_at AT TIME ZONE $1)::date = $2::date)::int AS sent_day,
            count(s.opened_at)::int AS opened, count(s.clicked_at)::int AS clicked, count(s.replied_at)::int AS replied
       FROM sends s JOIN campaigns c ON c.id = s.campaign_id
-     WHERE s.status <> 'failed'
+     WHERE s.status <> 'failed' AND s.step_position = 1
        AND c.site = 'investchronicles'
        AND c.id IN (SELECT campaign_id FROM sends WHERE variant IS NOT NULL)
      GROUP BY 1, 2 ORDER BY 2`, [cfg.tz, dayKey]);
