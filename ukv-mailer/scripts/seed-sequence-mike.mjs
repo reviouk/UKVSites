@@ -6,10 +6,11 @@
  * voice instead of "UKV International", past-performance + CGT caveats, brand CTA added.
  *
  *   node scripts/seed-sequence-mike.mjs apply     # overwrite steps of the two live cold campaigns (ids 1, 2)
+ *   node scripts/seed-sequence-mike.mjs ic-split  # campaign 2 only: 1 email, variants A/B/C = Mike's emails 1/2/3
  *   node scripts/seed-sequence-mike.mjs print     # show the copy for one brand
  */
 import "./_env.mjs";
-const { q, all, pool } = await import("../src/db.js");
+const { q, one, all, pool } = await import("../src/db.js");
 const MODE = process.argv[2];
 
 const BRAND = {
@@ -100,6 +101,19 @@ async function writeSteps(campaignId, site) {
 
 if (MODE === "apply") {
   for (const c of await all("SELECT * FROM campaigns WHERE name LIKE '%Cold sequence Nov 2026'")) { await writeSteps(c.id, c.site); console.log(`applied to #${c.id} ${c.name}`); }
+} else if (MODE === "ic-split") {
+  // Invest Chronicles: ONE email per contact, Mike's emails 1-3 split-tested as variants A/B/C at position 1.
+  const c = await one("SELECT * FROM campaigns WHERE id=2 AND site='investchronicles' AND name LIKE '%Cold sequence Nov 2026'");
+  if (!c) { console.error("campaign 2 not found / not the IC cold sequence; aborting"); await pool.end(); process.exit(1); }
+  await q("DELETE FROM steps WHERE campaign_id=$1", [c.id]);
+  for (const [i, s] of steps(c.site).entries())
+    await q("INSERT INTO steps(campaign_id,position,variant,delay_days,subject,preheader,body_html,reply_in_thread) VALUES($1,1,$2,0,$3,$4,$5,true)",
+      [c.id, "ABC"[i], s.subject, s.preheader, s.body]);
+  const done = await q("UPDATE enrolments SET status='completed' WHERE campaign_id=$1 AND status='active' AND current_step >= 1", [c.id]);
+  const left = await one("SELECT count(*)::int n FROM enrolments WHERE campaign_id=$1 AND status='active'", [c.id]);
+  const st = await all("SELECT position, variant, subject FROM steps WHERE campaign_id=$1 ORDER BY position, variant", [c.id]);
+  console.log(`campaign #${c.id}: ${st.length} step rows`, st.map(x => `${x.position}${x.variant}: ${x.subject}`));
+  console.log(`marked ${done.rowCount} already-emailed enrolments completed; ${left.n} active enrolments still to receive their one email`);
 } else if (MODE === "print") {
   for (const s of steps("marketwatcher")) console.log(`\n=== ${s.subject}\n${s.body}`);
 }

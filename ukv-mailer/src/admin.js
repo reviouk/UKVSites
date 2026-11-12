@@ -161,7 +161,11 @@ admin.post("/campaigns/:id/status", async (req, res) => {
 admin.get("/campaigns/:id", async (req, res) => {
   const c = await one("SELECT * FROM campaigns WHERE id=$1", [req.params.id]);
   if (!c) return res.status(404).send("not found");
-  const steps = await all("SELECT * FROM steps WHERE campaign_id=$1 ORDER BY position", [c.id]);
+  const steps = await all("SELECT * FROM steps WHERE campaign_id=$1 ORDER BY position, variant", [c.id]);
+  const vstats = await all(`
+    SELECT COALESCE(s.variant,'Earlier copy') AS variant, count(*)::int AS sent, count(s.opened_at)::int AS opened, count(s.clicked_at)::int AS clicked, count(s.replied_at)::int AS replied
+      FROM sends s WHERE s.campaign_id=$1 AND s.status<>'failed' GROUP BY 1 ORDER BY 1`, [c.id]);
+  const hasVariants = steps.some(s => s.variant !== "A") || vstats.some(v => v.variant !== "Earlier copy");
   const stats = await all(`
     SELECT s.step_position, count(*)::int AS sent, count(s.opened_at)::int AS opened, count(s.clicked_at)::int AS clicked, count(s.replied_at)::int AS replied
       FROM sends s WHERE s.campaign_id=$1 AND s.status<>'failed' GROUP BY 1 ORDER BY 1`, [c.id]);
@@ -180,7 +184,7 @@ admin.get("/campaigns/:id", async (req, res) => {
 
 <h2>Steps</h2>
 ${steps.map(s => `<div class="box"><form method="post" action="/admin/steps/${s.id}">
-<div class="row"><div><label>Step ${s.position} subject <small>(leave blank on follow-ups to send as "Re: step 1 subject")</small></label><input type="text" name="subject" value="${h(s.subject)}"></div>
+<div class="row"><div><label>Step ${s.position}${hasVariants ? ` · <b>Variant ${h(s.variant)}</b>` : ""} subject <small>(leave blank on follow-ups to send as "Re: step 1 subject")</small></label><input type="text" name="subject" value="${h(s.subject)}"></div>
 <div><label>Delay (days after previous step)</label><input type="number" name="delay_days" value="${s.delay_days}" min="0" ${s.position === 1 ? "disabled" : ""}></div></div>
 <label>Preview text (preheader) <small>— shown next to the subject in the inbox; ~80 characters</small></label><input type="text" name="preheader" value="${h(s.preheader || "")}">
 <label>Body</label><textarea name="body">${h(s.body_html)}</textarea>
@@ -191,6 +195,9 @@ ${steps.map(s => `<div class="box"><form method="post" action="/admin/steps/${s.
 <div class="row"><div><label>Subject (blank = Re: step 1)</label><input type="text" name="subject"></div><div><label>Delay days</label><input type="number" name="delay_days" value="4" min="1"></div></div>
 <label>Preview text (preheader)</label><input type="text" name="preheader">
 <label>Body</label><textarea name="body" placeholder="Hi {{first_name|there}},&#10;&#10;Just making sure this reached you…"></textarea><p><button>Add step</button></p></form></div>
+
+${hasVariants ? `<h2>Results by variant <small class="muted"><a href="/admin/campaigns/${c.id}/variants.csv">download who got which (CSV)</a></small></h2>
+<table><tr><th>Variant</th><th>Sent</th><th>Opened</th><th>Clicked</th><th>Replied</th></tr>${vstats.map(v => `<tr><td>${h(v.variant)}</td><td>${v.sent}</td><td>${v.opened}</td><td>${v.clicked}</td><td>${v.replied}</td></tr>`).join("") || "<tr><td colspan=5 class=muted>Nothing sent yet</td></tr>"}</table>` : ""}
 
 <h2>Results by step</h2>
 <table><tr><th>Step</th><th>Sent</th><th>Opened</th><th>Clicked</th><th>Replied</th></tr>${stats.map(s => `<tr><td>${s.step_position}</td><td>${s.sent}</td><td>${s.opened}</td><td>${s.clicked}</td><td>${s.replied}</td></tr>`).join("") || "<tr><td colspan=5 class=muted>Nothing sent yet</td></tr>"}</table>
@@ -215,6 +222,13 @@ admin.post("/campaigns/:id/steps", async (req, res) => {
     [req.params.id, pos, Math.max(1, Number(req.body.delay_days) || 1), (req.body.subject || "").trim(), (req.body.preheader || "").trim(), req.body.body || ""]);
   redirect(res, `/admin/campaigns/${req.params.id}`, `Step ${pos} added`);
 });
+admin.get("/campaigns/:id/variants.csv", async (req, res) => {
+  const rows = await all(`SELECT ct.email, s.variant, s.step_position, s.sent_at, s.status, (s.opened_at IS NOT NULL) AS opened, (s.clicked_at IS NOT NULL) AS clicked, (s.replied_at IS NOT NULL) AS replied
+    FROM sends s JOIN contacts ct ON ct.id=s.contact_id WHERE s.campaign_id=$1 ORDER BY s.variant NULLS FIRST, s.sent_at`, [req.params.id]);
+  const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  res.type("text/csv").set("Content-Disposition", `attachment; filename="campaign-${req.params.id}-variants.csv"`)
+    .send(["email,variant,step,sent_at,status,opened,clicked,replied", ...rows.map(r => [r.email, r.variant ?? "earlier copy", r.step_position, r.sent_at?.toISOString?.() ?? r.sent_at, r.status, r.opened, r.clicked, r.replied].map(esc).join(","))].join("\n"));
+});
 admin.post("/steps/:id", async (req, res) => {
   const s = await one("SELECT * FROM steps WHERE id=$1", [req.params.id]);
   await q("UPDATE steps SET subject=$2, body_html=$3, delay_days=$4, preheader=$5 WHERE id=$1",
@@ -224,7 +238,9 @@ admin.post("/steps/:id", async (req, res) => {
 admin.post("/steps/:id/delete", async (req, res) => {
   const s = await one("SELECT * FROM steps WHERE id=$1", [req.params.id]);
   await q("DELETE FROM steps WHERE id=$1", [s.id]);
-  await q("UPDATE steps SET position = position - 1 WHERE campaign_id=$1 AND position > $2", [s.campaign_id, s.position]);
+  // only close the gap when no other variant still occupies this position
+  const left = await one("SELECT 1 AS x FROM steps WHERE campaign_id=$1 AND position=$2 LIMIT 1", [s.campaign_id, s.position]);
+  if (!left) await q("UPDATE steps SET position = position - 1 WHERE campaign_id=$1 AND position > $2", [s.campaign_id, s.position]);
   redirect(res, `/admin/campaigns/${s.campaign_id}`, "Step deleted");
 });
 

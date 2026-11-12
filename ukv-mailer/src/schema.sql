@@ -199,3 +199,13 @@ CREATE TABLE IF NOT EXISTS verify_jobs (
 
 -- When this enrolment's "nurture completed" tag was written to HubSpot (hubspot.js syncCompletions).
 ALTER TABLE enrolments ADD COLUMN IF NOT EXISTS hubspot_completed_at TIMESTAMPTZ;
+
+-- Step variants (split testing): several step rows may share a position; the sender picks one per enrolment.
+ALTER TABLE steps ADD COLUMN IF NOT EXISTS variant TEXT NOT NULL DEFAULT 'A';
+ALTER TABLE sends ADD COLUMN IF NOT EXISTS variant TEXT;
+ALTER TABLE steps DROP CONSTRAINT IF EXISTS steps_campaign_id_position_key;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'steps_campaign_position_variant_key') THEN
+    ALTER TABLE steps ADD CONSTRAINT steps_campaign_position_variant_key UNIQUE (campaign_id, position, variant);
+  END IF;
+END $$;

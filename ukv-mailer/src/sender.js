@@ -39,6 +39,13 @@ export async function boostToday() {
   return m && m[1] === nowLocal().dateKey ? Math.max(1, Number(m[2])) : 1;
 }
 
+/** Pick one step row among variants sharing a position, deterministically by enrolment id (rows pre-ordered by variant). */
+export function pickVariant(rows, enrolmentId) {
+  if (!rows || !rows.length) return null;
+  const sorted = [...rows].sort((a, b) => String(a.variant).localeCompare(String(b.variant)));
+  return sorted[Number(enrolmentId) % sorted.length] || sorted[0];
+}
+
 /**
  * Share the day's total across active mailboxes by water-filling: a mailbox with a
  * low cap (warm-up) takes only its cap and the remainder is spread over the others.
@@ -196,7 +203,7 @@ async function sendOne(lanes, route) {
       }
     }
 
-    const step = await one("SELECT * FROM steps WHERE campaign_id=$1 AND position=$2", [en.campaign_id, en.current_step + 1]);
+    const step = pickVariant(await all("SELECT * FROM steps WHERE campaign_id=$1 AND position=$2 ORDER BY variant", [en.campaign_id, en.current_step + 1]), en.id);
     if (!step) {
       await client.query("UPDATE enrolments SET status='completed' WHERE id=$1", [en.id]);
       await client.query("COMMIT"); return "skipped";
@@ -230,12 +237,12 @@ async function sendOne(lanes, route) {
     }
 
     await client.query(
-      `INSERT INTO sends(token,enrolment_id,campaign_id,contact_id,mailbox_id,step_position,message_id,subject,status,error)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [token, en.id, en.campaign_id, en.contact_id, mailbox.id, step.position, messageId, subject, status, error]);
+      `INSERT INTO sends(token,enrolment_id,campaign_id,contact_id,mailbox_id,step_position,message_id,subject,status,error,variant)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [token, en.id, en.campaign_id, en.contact_id, mailbox.id, step.position, messageId, subject, status, error, step.variant]);
 
     if (status === "sent") {
-      const next = await one("SELECT * FROM steps WHERE campaign_id=$1 AND position=$2", [en.campaign_id, step.position + 1]);
+      const next = pickVariant(await all("SELECT * FROM steps WHERE campaign_id=$1 AND position=$2 ORDER BY variant", [en.campaign_id, step.position + 1]), en.id);
       await client.query(
         `UPDATE enrolments SET current_step=$2, mailbox_id=$3,
                 thread_message_id = COALESCE(thread_message_id, $4), thread_subject = COALESCE(thread_subject, $5),

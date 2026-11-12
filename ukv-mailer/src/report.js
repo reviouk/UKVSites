@@ -127,6 +127,30 @@ export async function dailyReport(from, to) {
   return { from, to, days: [...byDay.values()], totals, outside: { connected: inst.connected, configured: !!reportCfg.instantlyKey, error: inst.error } };
 }
 
+
+// ---- split-test variants (Invest Chronicles single-email campaign) ---------------------
+/** Per-variant results for campaigns that send variants (sends.variant set). Earlier sends have variant NULL => "Earlier copy". */
+export async function variantReport(dayKey) {
+  const rows = await all(`
+    SELECT c.site, COALESCE(s.variant, 'Earlier copy') AS variant,
+           count(*)::int AS sent,
+           count(*) FILTER (WHERE (s.sent_at AT TIME ZONE $1)::date = $2::date)::int AS sent_day,
+           count(s.opened_at)::int AS opened, count(s.clicked_at)::int AS clicked, count(s.replied_at)::int AS replied
+      FROM sends s JOIN campaigns c ON c.id = s.campaign_id
+     WHERE s.status <> 'failed'
+       AND c.site = 'investchronicles'
+       AND c.id IN (SELECT campaign_id FROM sends WHERE variant IS NOT NULL)
+     GROUP BY 1, 2 ORDER BY 2`, [cfg.tz, dayKey]);
+  return rows;
+}
+function variantTableHtml(rows, { sans = "Helvetica,Arial,sans-serif", compact = false } = {}) {
+  if (!rows.length) return "";
+  const th = (x) => `<th align="right" style="padding:8px 6px;font:600 10px ${sans};letter-spacing:.06em;text-transform:uppercase;color:#857b6e;border-bottom:1px solid #e7dfd2">${x}</th>`;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fffdf9;border:1px solid #e7dfd2;border-radius:10px">
+<tr><th align="left" style="padding:8px 12px;font:600 10px ${sans};letter-spacing:.06em;text-transform:uppercase;color:#857b6e;border-bottom:1px solid #e7dfd2">Split test: ${h(label("investchronicles"))} (all time)</th>${th("Sent")}${th("Today")}${th("Opens")}${th("Clicks")}${th("Replies")}</tr>
+${rows.map(r => `<tr><td style="padding:9px 12px;border-bottom:1px solid #f1ebe1;font:14px ${sans};color:#191714">${r.variant.length === 1 ? "Email " : ""}${h(r.variant)}</td>${[r.sent, r.sent_day, r.opened, r.clicked, r.replied].map(x => `<td align="right" style="padding:9px 6px;border-bottom:1px solid #f1ebe1;font:14px ${sans};color:#191714">${n(x)}</td>`).join("")}</tr>`).join("")}</table>`;
+}
+
 // ---- rendering ------------------------------------------------------------------
 const label = (site) => SITES[site]?.label === "The Invest Chronicle" ? "Invest Chronicles" : (SITES[site]?.label || site);
 const pct = (a, b) => (b ? `${((100 * a) / b).toFixed(1)}%` : "–");
@@ -192,6 +216,7 @@ export async function rampPlan() { return parseRampPlan(await getSetting("report
 export async function renderClientPage() {
   const to = todayKey(), from = addDays(to, -89);
   const r = await dailyReport(from, to);
+  const variantHtml = variantTableHtml(await variantReport(to));
   const data = {
     today: to, yesterday: yesterdayKey(),
     brands: BRANDS.map(b => ({ key: b, name: label(b), color: BRAND_COLOR[b] })),
@@ -305,6 +330,7 @@ footer{color:var(--muted);font-size:12px;margin-top:26px;text-align:center}
  <section class="card"><div class="sec-h"><h3>Daily trend</h3><div class="seg" id="metric" role="group" aria-label="Chart metric">
   <button data-m="sent">Sent</button><button data-m="replies">Replies</button><button data-m="clicks">Clicks</button><button data-m="enquiries">Form completions</button><button data-m="bounced">Bounces</button></div></div>
   <svg class="chart" id="chart" role="img" aria-label="Daily chart"></svg><div class="legend" id="legend"></div></section>
+ ${variantHtml ? `<section class="card"><div class="sec-h"><h3>Email variants</h3></div>${variantHtml}</section>` : ""}
  <section class="card"><div class="sec-h"><h3>Day by day</h3></div><div class="tbl" id="table"></div></section>
  <section><div class="notes">${notes(r).map(x => `<p>${svg("info", 16)}<span>${h(x)}</span></p>`).join("")}</div></section>
  <footer>Sending runs Monday to Friday, 08:00–17:30 UK time.</footer>
@@ -412,6 +438,8 @@ render();
 export async function renderEmail(dayKey = yesterdayKey()) {
   const d = await dailyReport(dayKey, dayKey);
   const day = d.days[0];
+  const variantRows = await variantReport(dayKey);
+  const variantHtml = variantTableHtml(variantRows);
   const link = reportCfg.token ? `${reportCfg.baseUrl}/report/${encodeURIComponent(reportCfg.token)}?range=yesterday` : "";
   const subject = `Campaign report · ${nice(dayKey, { weekday: "long", day: "numeric", month: "long" })}: ${n(day.total.sent)} sent, ${n(day.total.replies)} ${day.total.replies === 1 ? "reply" : "replies"}`;
   const serif = "Georgia,'Times New Roman',serif", sans = "Helvetica,Arial,sans-serif";
@@ -441,6 +469,7 @@ export async function renderEmail(dayKey = yesterdayKey()) {
 <tr><td style="padding:10px 6px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fffdf9;border:1px solid #e7dfd2;border-radius:10px">
 <tr><th align="left" style="padding:8px 12px;font:600 10px ${sans};letter-spacing:.06em;text-transform:uppercase;color:#857b6e;border-bottom:1px solid #e7dfd2">By brand</th>${th("Sent")}${th("Replies")}${th("Clicks")}${th("Forms")}</tr>
 ${BRANDS.map(brandRow).join("")}</table></td></tr>
+${variantHtml ? `<tr><td style="padding:10px 6px 0">${variantHtml}</td></tr>` : ""}
 ${link ? `<tr><td align="center" style="padding:22px 6px 6px"><a href="${h(link)}" style="display:inline-block;background:#c8892b;color:#16130f;font:600 14px ${sans};text-decoration:none;padding:12px 22px;border-radius:999px">Open the full report &rarr;</a></td></tr>` : ""}
 <tr><td style="padding:16px 10px 4px;font:12px/1.5 ${sans};color:#857b6e">${h(notes(d)[0])}</td></tr>
 </table></td></tr></table></body></html>`;
