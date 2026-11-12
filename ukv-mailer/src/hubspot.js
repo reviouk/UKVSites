@@ -66,7 +66,13 @@ export async function ensureProperties() {
 }
 
 // ---- "Nurture completed" lists (one per website) --------------------------------
-export const nurtureListName = (site) => `Nurture completed - ${SITES[site]?.label || site}`;
+// Renamed 12 Nov 2026 (Rob): the two per-website lists now hold anyone who OPENED or CLICKED a Nov 2026 campaign email.
+export const nurtureListName = (site) => `Opens and clicks - ${SITES[site]?.label || site}`;
+const LEAD_SOURCE = { investchronicles: "investchronicles", marketwatcher: "Marketwatcher" };
+const engagedBranch = (prop, site) => ({ filterBranchType: "AND", filterBranches: [], filters: [
+  { filterType: "PROPERTY", property: prop, operation: { operationType: "BOOL", operator: "IS_EQUAL_TO", value: true } },
+  { filterType: "PROPERTY", property: "external_lead_source", operation: { operationType: "ENUMERATION", operator: "IS_ANY_OF", values: [LEAD_SOURCE[site] || site] } },
+  { filterType: "PROPERTY", property: "instantly_campaign", operation: { operationType: "MULTISTRING", operator: "CONTAINS", values: ["Nov 2026"] } } ] });
 export const nurtureState = { lists: {}, lastRun: null, lastResult: "" };
 
 async function ensureNurtureLists() {
@@ -78,10 +84,7 @@ async function ensureNurtureLists() {
       method: "POST", headers: headers(),
       body: JSON.stringify({
         name, objectTypeId: "0-1", processingType: "DYNAMIC",
-        filterBranch: { filterBranchType: "OR", filters: [], filterBranches: [{ filterBranchType: "AND", filterBranches: [], filters: [{
-          filterType: "PROPERTY", property: "ukv_nurture_completed",
-          operation: { operationType: "ENUMERATION", operator: "IS_ANY_OF", values: [site] },
-        }] }] },
+        filterBranch: { filterBranchType: "OR", filters: [], filterBranches: [engagedBranch("instantly_opened", site), engagedBranch("instantly_clicked", site)] },
       }),
     });
     if (res.ok) { nurtureState.lists[site] = (await res.json()).list?.listId; console.log(`[hubspot] created list "${name}" (${nurtureState.lists[site]})`); }
