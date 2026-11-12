@@ -143,12 +143,41 @@ export async function variantReport(dayKey) {
      GROUP BY 1, 2 ORDER BY 2`, [cfg.tz, dayKey]);
   return rows;
 }
-function variantTableHtml(rows, { sans = "Helvetica,Arial,sans-serif", compact = false } = {}) {
+/** Market Watcher split test: first-email (step 0) results per variant from the outside sender, all reported campaigns summed. */
+let instVarCache = { at: 0, rows: [] };
+async function instantlyVariants() {
+  if (!reportCfg.instantlyKey || !reportCfg.instantlyCampaigns.length) return [];
+  if (Date.now() - instVarCache.at < 15 * 60_000) return instVarCache.rows;
+  const agg = {};
+  for (const { id } of reportCfg.instantlyCampaigns) {
+    try {
+      const r = await fetch(`https://api.instantly.ai/api/v2/campaigns/analytics/steps?campaign_id=${encodeURIComponent(id)}`,
+        { headers: { Authorization: `Bearer ${reportCfg.instantlyKey}` } });
+      if (!r.ok) throw new Error(`${r.status}`);
+      for (const s of await r.json()) {
+        if (String(s.step) !== "0") continue;                       // first email only
+        const v = "ABCDEFGHIJ"[Number(s.variant)] || String(s.variant);
+        const a = (agg[v] ||= { variant: v, sent: 0, sent_day: null, opened: null, clicked: 0, replied: 0 });
+        a.sent += Number(s.sent || 0); a.clicked += Number(s.unique_clicks || 0); a.replied += Number(s.unique_replies || 0);
+      }
+    } catch (e) { console.warn("[report] instantly variants", id, e.message); return instVarCache.rows; }
+  }
+  instVarCache = { at: Date.now(), rows: Object.values(agg).sort((x, y) => x.variant.localeCompare(y.variant)) };
+  return instVarCache.rows;
+}
+/** Both brands' split-test tables (HTML), or "" when neither has data. */
+async function variantSectionsHtml(dayKey) {
+  const [ic, mw] = await Promise.all([variantReport(dayKey), instantlyVariants()]);
+  return [variantTableHtml(ic, `Split test: ${label("investchronicles")} (first email, all time)`),
+          variantTableHtml(mw, `Split test: ${label("marketwatcher")} (first email, all time)`)].filter(Boolean).join(`<div style="height:10px"></div>`);
+}
+function variantTableHtml(rows, title, { sans = "Helvetica,Arial,sans-serif" } = {}) {
   if (!rows.length) return "";
   const th = (x) => `<th align="right" style="padding:8px 6px;font:600 10px ${sans};letter-spacing:.06em;text-transform:uppercase;color:#857b6e;border-bottom:1px solid #e7dfd2">${x}</th>`;
+  const cell = (x) => `<td align="right" style="padding:9px 6px;border-bottom:1px solid #f1ebe1;font:14px ${sans};color:#191714">${x == null ? "–" : n(x)}</td>`;
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fffdf9;border:1px solid #e7dfd2;border-radius:10px">
-<tr><th align="left" style="padding:8px 12px;font:600 10px ${sans};letter-spacing:.06em;text-transform:uppercase;color:#857b6e;border-bottom:1px solid #e7dfd2">Split test: ${h(label("investchronicles"))} (all time)</th>${th("Sent")}${th("Today")}${th("Opens")}${th("Clicks")}${th("Replies")}</tr>
-${rows.map(r => `<tr><td style="padding:9px 12px;border-bottom:1px solid #f1ebe1;font:14px ${sans};color:#191714">${r.variant.length === 1 ? "Email " : ""}${h(r.variant)}</td>${[r.sent, r.sent_day, r.opened, r.clicked, r.replied].map(x => `<td align="right" style="padding:9px 6px;border-bottom:1px solid #f1ebe1;font:14px ${sans};color:#191714">${n(x)}</td>`).join("")}</tr>`).join("")}</table>`;
+<tr><th align="left" style="padding:8px 12px;font:600 10px ${sans};letter-spacing:.06em;text-transform:uppercase;color:#857b6e;border-bottom:1px solid #e7dfd2">${h(title)}</th>${th("Sent")}${th("Today")}${th("Opens")}${th("Clicks")}${th("Replies")}</tr>
+${rows.map(r => `<tr><td style="padding:9px 12px;border-bottom:1px solid #f1ebe1;font:14px ${sans};color:#191714">${r.variant.length === 1 ? "Email " : ""}${h(r.variant)}</td>${[r.sent, r.sent_day, r.opened, r.clicked, r.replied].map(cell).join("")}</tr>`).join("")}</table>`;
 }
 
 // ---- rendering ------------------------------------------------------------------
@@ -216,7 +245,7 @@ export async function rampPlan() { return parseRampPlan(await getSetting("report
 export async function renderClientPage() {
   const to = todayKey(), from = addDays(to, -89);
   const r = await dailyReport(from, to);
-  const variantHtml = variantTableHtml(await variantReport(to));
+  const variantHtml = await variantSectionsHtml(to);
   const data = {
     today: to, yesterday: yesterdayKey(),
     brands: BRANDS.map(b => ({ key: b, name: label(b), color: BRAND_COLOR[b] })),
@@ -438,8 +467,7 @@ render();
 export async function renderEmail(dayKey = yesterdayKey()) {
   const d = await dailyReport(dayKey, dayKey);
   const day = d.days[0];
-  const variantRows = await variantReport(dayKey);
-  const variantHtml = variantTableHtml(variantRows);
+  const variantHtml = await variantSectionsHtml(dayKey);
   const link = reportCfg.token ? `${reportCfg.baseUrl}/report/${encodeURIComponent(reportCfg.token)}?range=yesterday` : "";
   const subject = `Campaign report · ${nice(dayKey, { weekday: "long", day: "numeric", month: "long" })}: ${n(day.total.sent)} sent, ${n(day.total.replies)} ${day.total.replies === 1 ? "reply" : "replies"}`;
   const serif = "Georgia,'Times New Roman',serif", sans = "Helvetica,Arial,sans-serif";
