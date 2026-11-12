@@ -130,7 +130,7 @@ export async function dailyReport(from, to) {
 
 // ---- split-test variants (Invest Chronicles single-email campaign) ---------------------
 /** Per-variant results for campaigns that send variants (sends.variant set). Earlier sends have variant NULL => "Earlier copy". */
-export async function variantReport(dayKey) {
+export async function variantReport(dayKey, site = "investchronicles") {
   const rows = await all(`
     SELECT c.site, COALESCE(s.variant, 'Earlier copy') AS variant,
            count(*)::int AS sent,
@@ -138,9 +138,9 @@ export async function variantReport(dayKey) {
            count(s.opened_at)::int AS opened, count(s.clicked_at)::int AS clicked, count(s.replied_at)::int AS replied
       FROM sends s JOIN campaigns c ON c.id = s.campaign_id
      WHERE s.status <> 'failed' AND s.step_position = 1
-       AND c.site = 'investchronicles'
+       AND c.site = $3
        AND c.id IN (SELECT campaign_id FROM sends WHERE variant IS NOT NULL)
-     GROUP BY 1, 2 ORDER BY 2`, [cfg.tz, dayKey]);
+     GROUP BY 1, 2 ORDER BY 2`, [cfg.tz, dayKey, site]);
   return rows;
 }
 /** Market Watcher split test: first-email (step 0) results per variant from the outside sender, all reported campaigns summed. */
@@ -167,7 +167,10 @@ async function instantlyVariants() {
 }
 /** Both brands' split-test tables (HTML), or "" when neither has data. */
 async function variantSectionsHtml(dayKey) {
-  const [ic, mw] = await Promise.all([variantReport(dayKey), instantlyVariants()]);
+  const [ic, mwApp, mwOut] = await Promise.all([variantReport(dayKey), variantReport(dayKey, "marketwatcher"), instantlyVariants()]);
+  const m = {};                                       // Market Watcher = our mailer + outside sender, summed per variant
+  for (const r of [...mwApp, ...mwOut]) { const a = (m[r.variant] ||= { variant: r.variant, sent: 0, sent_day: null, opened: null, clicked: 0, replied: 0 }); a.sent += r.sent; a.clicked += r.clicked; a.replied += r.replied; if (r.sent_day != null) a.sent_day = (a.sent_day || 0) + r.sent_day; }
+  const mw = Object.values(m).sort((x, y) => x.variant.localeCompare(y.variant));
   return [variantTableHtml(ic, `Split test: ${label("investchronicles")} (first email, all time)`),
           variantTableHtml(mw, `Split test: ${label("marketwatcher")} (first email, all time)`)].filter(Boolean).join(`<div style="height:10px"></div>`);
 }

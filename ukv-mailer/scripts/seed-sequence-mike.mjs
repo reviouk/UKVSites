@@ -101,10 +101,11 @@ async function writeSteps(campaignId, site) {
 
 if (MODE === "apply") {
   for (const c of await all("SELECT * FROM campaigns WHERE name LIKE '%Cold sequence Nov 2026'")) { await writeSteps(c.id, c.site); console.log(`applied to #${c.id} ${c.name}`); }
-} else if (MODE === "ic-split") {
-  // Invest Chronicles: ONE email per contact, Mike's emails 1-3 split-tested as variants A/B/C at position 1.
-  const c = await one("SELECT * FROM campaigns WHERE id=2 AND site='investchronicles' AND name LIKE '%Cold sequence Nov 2026'");
-  if (!c) { console.error("campaign 2 not found / not the IC cold sequence; aborting"); await pool.end(); process.exit(1); }
+} else if (MODE === "ic-split" || MODE === "mw-split") {
+  // ONE email per contact, Mike's emails 1-3 split-tested as variants A/B/C at position 1 (branded for the campaign's site).
+  const [id, site] = MODE === "ic-split" ? [2, "investchronicles"] : [1, "marketwatcher"];
+  const c = await one("SELECT * FROM campaigns WHERE id=$1 AND site=$2 AND name LIKE '%Cold sequence Nov 2026'", [id, site]);
+  if (!c) { console.error(`campaign ${id} not found / not the ${site} cold sequence; aborting`); await pool.end(); process.exit(1); }
   await q("DELETE FROM steps WHERE campaign_id=$1", [c.id]);
   for (const [i, s] of steps(c.site).entries())
     await q("INSERT INTO steps(campaign_id,position,variant,delay_days,subject,preheader,body_html,reply_in_thread) VALUES($1,1,$2,0,$3,$4,$5,true)",
