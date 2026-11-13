@@ -66,8 +66,10 @@ export async function ensureProperties() {
 }
 
 // ---- "Nurture completed" lists (one per website) --------------------------------
-// Renamed 12 Nov 2026 (Rob): the two per-website lists now hold anyone who OPENED or CLICKED a Nov 2026 campaign email.
-export const nurtureListName = (site) => `Opens and clicks - ${SITES[site]?.label || site}`;
+// 13 Nov 2026 (Rob): four engagement lists for the Nov 2026 campaigns - "Opened - <brand>" (1892 IC, 1893 MW)
+// and "Clicked - <brand>" (1900 IC, 1901 MW). Not "nurture completed" any more.
+const ENGAGEMENT_LISTS = [{ kind: "Opened", prop: "instantly_opened" }, { kind: "Clicked", prop: "instantly_clicked" }];
+export const nurtureListName = (site, kind = "Opened") => `${kind} - ${SITES[site]?.label || site}`;
 const LEAD_SOURCE = { investchronicles: "investchronicles", marketwatcher: "Marketwatcher" };
 const engagedBranch = (prop, site) => ({ filterBranchType: "AND", filterBranches: [], filters: [
   { filterType: "PROPERTY", property: prop, operation: { operationType: "BOOL", operator: "IS_EQUAL_TO", value: true } },
@@ -76,18 +78,18 @@ const engagedBranch = (prop, site) => ({ filterBranchType: "AND", filterBranches
 export const nurtureState = { lists: {}, lastRun: null, lastResult: "" };
 
 async function ensureNurtureLists() {
-  for (const site of Object.keys(SITES)) {
-    const name = nurtureListName(site);
+  for (const site of Object.keys(SITES)) for (const { kind, prop } of ENGAGEMENT_LISTS) {
+    const name = nurtureListName(site, kind), key = `${site}:${kind}`;
     const found = await fetch(`${HS}/crm/v3/lists/object-type-id/0-1/name/${encodeURIComponent(name)}`, { headers: headers() });
-    if (found.ok) { nurtureState.lists[site] = (await found.json()).list?.listId; continue; }
+    if (found.ok) { nurtureState.lists[key] = (await found.json()).list?.listId; continue; }
     const res = await fetch(`${HS}/crm/v3/lists`, {
       method: "POST", headers: headers(),
       body: JSON.stringify({
         name, objectTypeId: "0-1", processingType: "DYNAMIC",
-        filterBranch: { filterBranchType: "OR", filters: [], filterBranches: [engagedBranch("instantly_opened", site), engagedBranch("instantly_clicked", site)] },
+        filterBranch: { filterBranchType: "OR", filters: [], filterBranches: [engagedBranch(prop, site)] },
       }),
     });
-    if (res.ok) { nurtureState.lists[site] = (await res.json()).list?.listId; console.log(`[hubspot] created list "${name}" (${nurtureState.lists[site]})`); }
+    if (res.ok) { nurtureState.lists[key] = (await res.json()).list?.listId; console.log(`[hubspot] created list "${name}" (${nurtureState.lists[key]})`); }
     else console.warn(`[hubspot] could not create list "${name}": ${res.status} ${(await res.text()).slice(0, 300)}`);
   }
 }
