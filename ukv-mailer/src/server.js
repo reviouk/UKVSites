@@ -6,6 +6,7 @@ import { admin } from "./admin.js";
 import { startSender, state as senderState } from "./sender.js";
 import { startReplyPoller, replyState } from "./replies.js";
 import { ensureProperties, startCompletionSync, nurtureState } from "./hubspot.js";
+import { startInstantlyReplySync, instantlyReplyState } from "./instantly-replies.js";
 import { startConversionSync } from "./conversions.js";
 import { startCallbacks, cbState } from "./callbacks.js";
 import { reportRoutes, startReportEmails, reportState } from "./report.js";
@@ -22,6 +23,7 @@ app.get("/healthz", (_req, res) => res.json({
   callbacks: { enabled: cbState.enabled, lastTick: cbState.lastTick, result: cbState.lastResult },
   reportEmail: reportState.lastResult,
   nurtureCompleted: { lists: nurtureState.lists, result: nurtureState.lastResult },
+  instantlyReplies: instantlyReplyState.lastResult,
 }));
 
 app.use(tracking);
@@ -38,5 +40,6 @@ app.listen(cfg.port, async () => {
   startConversionSync();
   startCallbacks();
   startReportEmails();
+  startInstantlyReplySync();
   startCompletionSync();
 });
