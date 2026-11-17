@@ -5,6 +5,7 @@
  *   - genuine reply  -> contacts.status=replied, HubSpot ukv_replied + instantly_engagement=replied
  *   - clear opt-out ("no thanks", "unsubscribe", ...) -> also unsubscribed + suppressed + HubSpot ukv_unsubscribed
  *   - auto-reply / "mailbox not monitored" -> logged only
+ *   - lead opened / clicked (first time) -> HubSpot instantly_opened / instantly_clicked (feeds lists 1892/1893/1900/1901)
  * Campaigns come from INSTANTLY_REPORT_CAMPAIGNS ("<id>:<site>,..."), key from INSTANTLY_REPORT_API_KEY.
  * Each Instantly email is processed once (events.detail = "instantly:<id>").
  */
@@ -19,8 +20,10 @@ const CAMPAIGNS = () => String(process.env.INSTANTLY_REPORT_CAMPAIGNS || "2cecb0
 const AUTO = /not monitored|auto(matic)?[\s-]*reply|out of (the )?office|automatische antwort|r[ée]ponse automatique|delivery (status|failure)|undeliverable/i;
 const OPT_OUT = /^\W*(no[, ]+thanks?|no thank you|unsubscribe|remove me|please remove|stop( emailing| sending)?|not interested|take me off)\b/i;
 
-const api = async (path) => {
-  const r = await fetch(`https://api.instantly.ai/api/v2${path}`, { headers: { Authorization: `Bearer ${KEY()}` } });
+const api = async (path, body) => {
+  const r = await fetch(`https://api.instantly.ai/api/v2${path}`, body
+    ? { method: "POST", headers: { Authorization: `Bearer ${KEY()}`, "Content-Type": "application/json" }, body: JSON.stringify(body) }
+    : { headers: { Authorization: `Bearer ${KEY()}` } });
   if (!r.ok) throw new Error(`${path.split("?")[0]} ${r.status}`);
   return r.json();
 };
@@ -28,7 +31,7 @@ const api = async (path) => {
 export async function syncInstantlyReplies() {
   if (!KEY()) { instantlyReplyState.lastResult = "no INSTANTLY_REPORT_API_KEY"; return 0; }
   instantlyReplyState.lastRun = new Date();
-  let fresh = 0, flagged = 0, optOuts = 0;
+  let fresh = 0, flagged = 0, optOuts = 0, opens = 0, clicks = 0;
   try {
     for (const { id, site } of CAMPAIGNS()) {
       const campaign = { name: (await api(`/campaigns/${id}`)).name };
@@ -65,10 +68,41 @@ export async function syncInstantlyReplies() {
           optOuts++;
         }
       }
+      // Opens/clicks: the Instantly workspace has no webhook (the old connector service is suspended), so read
+      // each lead's open/click counts and push the first open and first click to HubSpot (instantly_opened /
+      // instantly_clicked), which puts them in the Opened/Clicked lists and the brochure workflow. Logged as
+      // events 'instantly_open' / 'instantly_click' (not 'open'/'click', so the mailer's own stats are untouched).
+      const res = await syncInstantlyEngagement(id, site, campaign);
+      opens += res.opens; clicks += res.clicks;
     }
-    instantlyReplyState.lastResult = `${new Date().toISOString().slice(0, 16)}: ${fresh} new, ${flagged} replies flagged, ${optOuts} opt-outs`;
+    instantlyReplyState.lastResult = `${new Date().toISOString().slice(0, 16)}: ${fresh} new, ${flagged} replies flagged, ${optOuts} opt-outs, ${opens} opens + ${clicks} clicks to HubSpot`;
   } catch (e) { instantlyReplyState.lastResult = `error: ${e.message}`; console.warn("[instantly-replies]", e.message); }
   return flagged;
+}
+
+async function syncInstantlyEngagement(campaignId, site, campaign) {
+  let after, opens = 0, clicks = 0;
+  for (let page = 0; page < 500; page++) {
+    const j = await api("/leads/list", { campaign: campaignId, limit: 100, ...(after ? { starting_after: after } : {}) });
+    const items = j.items || [];
+    for (const l of items) {
+      const kinds = [];
+      if (l.email_open_count > 0) kinds.push(["opened", "instantly_open"]);
+      if (l.email_click_count > 0) kinds.push(["clicked", "instantly_click"]);
+      if (!kinds.length) continue;
+      const contact = await one("SELECT * FROM contacts WHERE lower(email)=$1", [String(l.email || "").toLowerCase().trim()]);
+      if (!contact) continue;                                     // not one of ours
+      for (const [engagement, type] of kinds) {
+        if (await one("SELECT 1 AS x FROM events WHERE contact_id=$1 AND type=$2 LIMIT 1", [contact.id, type])) continue;
+        await q("INSERT INTO events(contact_id,type,detail) VALUES($1,$2,$3)", [contact.id, type, `instantly:${campaignId}`]);
+        syncEngagement({ contact, campaign, engagement, site });
+        engagement === "opened" ? opens++ : clicks++;
+      }
+    }
+    if (!j.next_starting_after || !items.length) break;
+    after = j.next_starting_after;
+  }
+  return { opens, clicks };
 }
 
 export function startInstantlyReplySync() {
