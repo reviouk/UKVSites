@@ -19,7 +19,7 @@ export function smtpFor(mailbox) {
  * mailbox, so no per-user app passwords or 2-step verification are needed.
  */
 let sa;
-function googleServiceAccount() {
+export function googleServiceAccount() {
   if (sa !== undefined) return sa;
   const raw = process.env.GOOGLE_SA_JSON || "";
   if (!raw) { sa = null; return sa; }

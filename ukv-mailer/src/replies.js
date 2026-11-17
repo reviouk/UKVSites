@@ -11,6 +11,19 @@ import { simpleParser } from "mailparser";
 import { cfg } from "./config.js";
 import { q, one, all, getSetting, setSetting } from "./db.js";
 import { syncEngagement } from "./hubspot.js";
+import { googleServiceAccount } from "./mailer.js";
+import XOAuth2 from "nodemailer/lib/xoauth2/index.js";
+
+// Google Workspace mailboxes (auth_type 'google') have no password: read their INBOX over IMAP with
+// XOAUTH2, using an access token minted by the same service account that sends for them.
+const googleTokens = new Map(); // mailbox email -> XOAuth2 (caches and renews its own token)
+function googleAccessToken(email) {
+  const g = googleServiceAccount();
+  if (!g) return Promise.reject(new Error("GOOGLE_SA_JSON is not set (needed to read Google Workspace inboxes)"));
+  if (!googleTokens.has(email)) googleTokens.set(email, new XOAuth2({ user: email, serviceClient: g.serviceClient, privateKey: g.privateKey }));
+  const x = googleTokens.get(email);
+  return new Promise((res, rej) => x.getToken(false, (err, token) => (err ? rej(err) : res(token))));
+}
 
 export const replyState = { lastPoll: null, lastResult: "", configured: !!(cfg.imap.host && cfg.imap.user && cfg.imap.pass) };
 let busy = false;
@@ -25,8 +38,13 @@ export function startReplyPoller() {
 async function sources() {
   const list = [];
   if (replyState.configured) list.push({ label: "master", host: cfg.imap.host, port: cfg.imap.port, user: cfg.imap.user, pass: cfg.imap.pass, uidKey: "imap_last_uid" });
-  const boxes = await all("SELECT id, email, imap_host, imap_port, imap_pass, smtp_pass FROM mailboxes WHERE imap_poll AND enabled ORDER BY id");
+  const boxes = await all("SELECT id, email, imap_host, imap_port, imap_pass, smtp_pass, auth_type FROM mailboxes WHERE (imap_poll OR auth_type='google') AND enabled ORDER BY id");
   for (const b of boxes) {
+    if (b.auth_type === "google") {
+      // First read looks back 30 days so replies to sends made before this poller existed are caught.
+      list.push({ label: b.email, mailboxId: b.id, host: "imap.gmail.com", port: 993, user: b.email, google: true, lookbackDays: 30, uidKey: `imap_last_uid:mb${b.id}` });
+      continue;
+    }
     const pass = b.imap_pass || b.smtp_pass;
     if (!pass) continue;
     list.push({ label: b.email, mailboxId: b.id, host: b.imap_host || "imap.gmail.com", port: Number(b.imap_port) || 993, user: b.email, pass, uidKey: `imap_last_uid:mb${b.id}` });
@@ -58,7 +76,7 @@ export async function poll() {
 async function pollInbox(src) {
   const client = new ImapFlow({
     host: src.host, port: src.port, secure: true,
-    auth: { user: src.user, pass: src.pass },
+    auth: src.google ? { user: src.user, accessToken: await googleAccessToken(src.user) } : { user: src.user, pass: src.pass },
     logger: false,
     tls: process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0" ? { rejectUnauthorized: false } : undefined,
   });
@@ -68,7 +86,7 @@ async function pollInbox(src) {
     const lock = await client.getMailboxLock("INBOX");
     try {
       const lastUid = Number(await getSetting(src.uidKey, 0));
-      const uids = await client.search(lastUid ? { uid: `${lastUid + 1}:*` } : { since: new Date(Date.now() - 2 * 86400e3) }, { uid: true });
+      const uids = await client.search(lastUid ? { uid: `${lastUid + 1}:*` } : { since: new Date(Date.now() - (src.lookbackDays || 2) * 86400e3) }, { uid: true });
       const fresh = (uids || []).filter(u => u > lastUid);
       count = fresh.length;
       for (const uid of fresh) {
