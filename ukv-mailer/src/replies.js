@@ -11,6 +11,7 @@ import { simpleParser } from "mailparser";
 import { cfg } from "./config.js";
 import { q, one, all, getSetting, setSetting } from "./db.js";
 import { syncEngagement } from "./hubspot.js";
+import { isOptOut, optOut } from "./optout.js";
 import { googleServiceAccount } from "./mailer.js";
 import XOAuth2 from "nodemailer/lib/xoauth2/index.js";
 
@@ -191,6 +192,10 @@ async function handleMessage(m, uid) {
   await q("INSERT INTO events(send_id,contact_id,type,detail) VALUES($1,$2,'reply',$3)", [send?.id || null, contact.id, subject.slice(0, 300)]);
   syncEngagement({ contact, campaign, engagement: "replied", site: campaign?.site || contact.site });
   console.log(`[imap] reply from ${contact.email}: ${subject.slice(0, 80)}`);
+  if (isOptOut(text, subject)) {
+    await optOut({ contact, campaign, site: campaign?.site || contact.site, sendId: send?.id || null, why: subject });
+    console.log(`[imap] opt-out (removed): ${contact.email}`);
+  }
 }
 
 export async function recentReplies(limit = 50) {

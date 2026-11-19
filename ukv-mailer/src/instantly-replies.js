@@ -11,6 +11,7 @@
  */
 import { q, one, all } from "./db.js";
 import { syncEngagement } from "./hubspot.js";
+import { isOptOut, optOut } from "./optout.js";
 
 export const instantlyReplyState = { lastRun: null, lastResult: "" };
 const KEY = () => process.env.INSTANTLY_REPORT_API_KEY || "";
@@ -18,7 +19,6 @@ const CAMPAIGNS = () => String(process.env.INSTANTLY_REPORT_CAMPAIGNS || "2cecb0
   .split(",").map(s => s.trim()).filter(Boolean).map(s => { const [id, site] = s.split(":"); return { id, site: site || "marketwatcher" }; });
 
 const AUTO = /not monitored|auto(matic)?[\s-]*reply|out of (the )?office|automatische antwort|r[ée]ponse automatique|delivery (status|failure)|undeliverable/i;
-const OPT_OUT = /^\W*(no[, ]+thanks?|no thank you|unsubscribe|remove me|please remove|stop( emailing| sending)?|not interested|take me off)\b/i;
 
 const api = async (path, body) => {
   const r = await fetch(`https://api.instantly.ai/api/v2${path}`, body
@@ -60,11 +60,8 @@ export async function syncInstantlyReplies() {
         await q("INSERT INTO events(contact_id,type,detail) VALUES($1,'reply',$2)", [contact.id, `${tag} ${subject}`.slice(0, 300)]);
         syncEngagement({ contact, campaign, engagement: "replied", site });
         flagged++;
-        if (OPT_OUT.test(text)) {
-          await q("UPDATE contacts SET status='unsubscribed', updated_at=now() WHERE id=$1", [contact.id]);
-          await q("INSERT INTO suppressions(email,reason) VALUES($1,'instantly reply: opt-out') ON CONFLICT DO NOTHING", [contact.email]);
-          await q("INSERT INTO events(contact_id,type,detail) VALUES($1,'unsubscribe',$2)", [contact.id, `${tag} reply opt-out`]);
-          syncEngagement({ contact, campaign, engagement: "unsubscribed", site });
+        if (isOptOut(String(e.body?.text || text), e.subject)) {
+          await optOut({ contact, campaign, site, why: `${tag} ${subject}` });
           optOuts++;
         }
       }
