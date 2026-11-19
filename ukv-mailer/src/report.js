@@ -521,13 +521,13 @@ export function emailReady() {
   return missing;
 }
 
-export async function sendReportEmail({ dayKey = yesterdayKey(), to, cc } = {}) {
+export async function sendReportEmail({ dayKey = yesterdayKey(), to, cc, internal = false } = {}) {
   const s = await dailyEmailSettings();
-  to = to || (s.to.length ? s.to : reportCfg.to);
-  cc = cc || (s.cc.length ? s.cc : reportCfg.cc);
+  to = to || (internal ? s.internalTo : (s.to.length ? s.to : reportCfg.to));
+  cc = cc || (internal ? [] : (s.cc.length ? s.cc : reportCfg.cc));
   if (!to.length) throw new Error("No recipients");
-  // Daily client email with opens + brochure follow-up (report-daily.js).
-  const { subject, html, text } = await renderDailyEmail(dayKey);
+  // Daily client email with opens + brochure follow-up (report-daily.js); internal = Rob's fuller copy.
+  const { subject, html, text } = await renderDailyEmail(dayKey, { internal });
   const smtpMissing = emailReady().filter(k => k !== "REPORT_EMAIL_TO");
   if (!smtpMissing.length) {
     const { host, port, user, pass } = reportCfg.smtp;
@@ -546,20 +546,29 @@ export async function sendReportEmail({ dayKey = yesterdayKey(), to, cc } = {}) 
 /** Every 10 min: once the local time passes REPORT_EMAIL_TIME, send yesterday's report (once per day, only if anything was sent). */
 async function tick() {
   const s = await dailyEmailSettings();
-  if (!reportCfg.emailEnabled && !s.enabled) { reportState.lastResult = "disabled (REPORT_EMAIL_ENABLED / setting report_email_enabled not true)"; return; }
-  if (s.start && todayKey() < s.start) { reportState.lastResult = `waiting: first email on ${s.start}`; return; }
   reportState.lastRun = new Date();
   const { minutes } = nowLocal();
   const [hh, mm] = reportCfg.time.split(":").map(Number);
-  if (minutes < hh * 60 + (mm || 0)) return;
+  const due = minutes >= hh * 60 + (mm || 0);
   const day = yesterdayKey();
-  if ((await getSetting("report_email_last_day", "")) === day) return;
-  const { totalSent } = await renderDailyEmail(day);
-  if (!totalSent) { await setSetting("report_email_last_day", day); reportState.lastResult = `${day}: nothing sent, no email`; return; }
-  await sendReportEmail({ dayKey: day });
-  await setSetting("report_email_last_day", day);
-  reportState.lastResult = `${day}: sent`;
-  console.log(`[report] ${reportState.lastResult}`);
+  const status = [];
+  // Two jobs, same time: the client email (from report_email_start) and the internal copy (whenever report_internal_to is set).
+  const jobs = [
+    { name: "client", on: (reportCfg.emailEnabled || s.enabled) && !(s.start && todayKey() < s.start), wait: s.start, key: "report_email_last_day", internal: false },
+    { name: "internal", on: s.internalTo.length > 0, key: "report_internal_last_day", internal: true },
+  ];
+  for (const j of jobs) {
+    if (!j.on) { status.push(`${j.name}: ${j.wait && todayKey() < j.wait ? `waiting for ${j.wait}` : "off"}`); continue; }
+    if (!due || (await getSetting(j.key, "")) === day) { status.push(`${j.name}: ${(await getSetting(j.key, "")) || "not yet sent"}`); continue; }
+    try {
+      const { totalSent } = await renderDailyEmail(day);
+      if (totalSent) await sendReportEmail({ dayKey: day, internal: j.internal });
+      await setSetting(j.key, day);
+      status.push(`${j.name}: ${day} ${totalSent ? "sent" : "nothing sent, no email"}`);
+      console.log(`[report] ${j.name} ${day} ${totalSent ? "sent" : "skipped (0 sends)"}`);
+    } catch (e) { status.push(`${j.name}: error ${e.message}`); console.warn("[report]", j.name, e.message); }
+  }
+  reportState.lastResult = status.join("; ");
 }
 
 export function startReportEmails() {

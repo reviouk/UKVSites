@@ -10,6 +10,7 @@
 import { cfg, SITES } from "./config.js";
 import { all, getSetting } from "./db.js";
 import { escapeHtml as h } from "./templates.js";
+import { isOptOut, replyOnly } from "./optout.js";
 
 const BRANDS = ["investchronicles", "marketwatcher"];
 const BRAND_LABEL = { investchronicles: "The Invest Chronicle", marketwatcher: "Market Watcher" };
@@ -24,6 +25,7 @@ export const dailyEmailSettings = async () => ({
   to: (await getSetting("report_email_to", "")).split(",").map(s => s.trim()).filter(Boolean),
   cc: (await getSetting("report_email_cc", "")).split(",").map(s => s.trim()).filter(Boolean),
   mailbox: await getSetting("report_email_mailbox", ""),
+  internalTo: (await getSetting("report_internal_to", "")).split(",").map(s => s.trim()).filter(Boolean),
 });
 
 async function instantlyDay(day) {
@@ -95,7 +97,46 @@ export async function dailyEmailData(day) {
   return { day, brands, total, replies, stages: await brochureStages() };
 }
 
-export async function renderDailyEmail(day) {
+// ---- internal extras (Rob's copy): what each reply said + today's sending limit ----------------
+async function replyTexts(day) {
+  const P = [cfg.tz, day];
+  const mailer = await all(`SELECT r.from_email email, r.snippet text, r.received_at at, COALESCE(c.site,'investchronicles') site
+    FROM replies r LEFT JOIN sends s ON s.id=r.send_id LEFT JOIN campaigns c ON c.id=s.campaign_id
+    WHERE NOT r.is_bounce AND (r.received_at AT TIME ZONE $1)::date=$2::date ORDER BY r.received_at`, P);
+  const out = mailer.map(r => ({ email: r.email, site: r.site, text: replyOnly(r.text), subject: "" }));
+  const key = process.env.INSTANTLY_REPORT_API_KEY;
+  const camps = String(process.env.INSTANTLY_REPORT_CAMPAIGNS || "2cecb091-fd83-4b06-a647-a9fa1ee64637:marketwatcher").split(",").map(s => s.trim()).filter(Boolean);
+  for (const c of camps) {
+    const [id, site = "marketwatcher"] = c.split(":");
+    try {
+      const r = await fetch(`https://api.instantly.ai/api/v2/emails?campaign_id=${encodeURIComponent(id)}&email_type=received&limit=100`, { headers: { Authorization: `Bearer ${key}` } });
+      if (!r.ok) continue;
+      for (const e of (await r.json()).items || []) {
+        const when = new Date(e.timestamp_email || e.timestamp_created);
+        if (when.toLocaleDateString("en-CA", { timeZone: cfg.tz }) !== day) continue;
+        out.push({ email: String(e.lead || e.from_address_email || ""), site, subject: e.subject || "", text: replyOnly(e.body?.text || e.content_preview || "") });
+      }
+    } catch {}
+  }
+  return out;
+}
+
+async function capacityToday() {
+  const { allowances } = await import("./sender.js");
+  const { total, allowances: al } = await allowances();
+  const mailer = Math.min(total, [...al.values()].reduce((a, b) => a + Math.max(0, b - 3), 0));
+  let instantly = 0;
+  const key = process.env.INSTANTLY_REPORT_API_KEY;
+  for (const c of String(process.env.INSTANTLY_REPORT_CAMPAIGNS || "2cecb091-fd83-4b06-a647-a9fa1ee64637:marketwatcher").split(",").map(s => s.trim()).filter(Boolean)) {
+    try {
+      const j = await (await fetch(`https://api.instantly.ai/api/v2/campaigns/${encodeURIComponent(c.split(":")[0])}`, { headers: { Authorization: `Bearer ${key}` } })).json();
+      if (j.status === 1) instantly += Number(j.daily_limit || 0);
+    } catch {}
+  }
+  return { mailer, instantly, total: mailer + instantly };
+}
+
+export async function renderDailyEmail(day, { internal = false } = {}) {
   const d = await dailyEmailData(day);
   const t = d.total;
   const nice = new Date(`${day}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
@@ -132,10 +173,22 @@ ${row("Total", t, true)}
 <h3 style="font:600 16px ${sans};margin:22px 0 6px">Replies</h3>
 ${replyHtml}
 ${stageHtml}
+${internal ? await internalHtml(day, sans) : ""}
 </div></body></html>`;
   const text = [`Email campaign report – ${nice}`, "",
     ...BRANDS.map(b => { const x = d.brands[b]; return `${BRAND_LABEL[b]}: ${x.sent} sent, ${x.opened} opened, ${x.clicks} clicks, ${x.replies} replies, ${x.unsubs} unsubscribes, ${x.forms} form fills`; }),
     `Total: ${t.sent} sent, ${t.opened} opened, ${t.clicks} clicks, ${t.replies} replies, ${t.unsubs} unsubscribes, ${t.forms} form fills`,
     s ? `\nBrochure follow-up: ${s.total} contacts; ${s.waiting} about to get the brochure, ${s.brochure} due the video, ${s.video} sent both.` : ""].join("\n");
-  return { subject, html, text, totalSent: t.sent };
+  return { subject: internal ? `[Internal] ${subject}` : subject, html, text, totalSent: t.sent };
+}
+
+async function internalHtml(day, sans) {
+  const [texts, cap] = await Promise.all([replyTexts(day).catch(() => []), capacityToday().catch(() => null)]);
+  const li = texts.map(r => `<li><b>${h(r.email)}</b> (${h(BRAND_LABEL[r.site] || r.site)})${isOptOut(r.text, r.subject) ? " – <i>removed</i>" : ""}${/^(automatic reply|auto|out of office)/i.test(r.subject) ? " – <i>auto-reply</i>" : ""}: “${h(r.text.replace(/\s+/g, " ").slice(0, 280))}”</li>`).join("\n");
+  return `<hr style="margin:26px 0 10px;border:0;border-top:1px solid #ddd">
+<p style="font:600 12px ${sans};color:#999;letter-spacing:.08em;text-transform:uppercase">Internal – not in the client email</p>
+<h3 style="font:600 16px ${sans};margin:10px 0 6px">What the replies said</h3>
+${li ? `<ul style="font:14px/1.5 ${sans}">${li}</ul>` : `<p style="font:14px ${sans}">No replies.</p>`}
+${cap ? `<h3 style="font:600 16px ${sans};margin:18px 0 6px">Sending limit today</h3>
+<p style="font:14px ${sans}">About <b>${n(cap.total)}</b> emails: mailer ${n(cap.mailer)}, Instantly ${n(cap.instantly)}.</p>` : ""}`;
 }

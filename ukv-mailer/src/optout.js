@@ -10,7 +10,7 @@ import { syncEngagement } from "./hubspot.js";
 // Only the person's own words: drop the quoted original (our email has an unsubscribe line in it).
 export function replyOnly(text) {
   const t = String(text || "").replace(/\r/g, "");
-  const cut = t.search(/^\s*(On .{0,200}wrote:|From:|Sent from my|-{2,}\s*Original|_{5,}|>)/im);
+  const cut = t.search(/(^|\s)On [^\n]{0,120}\d{4}[\s\S]{0,140}?wrote:|^\s*(From:|-{2,}\s*Original|_{5,}|>)|Sent from my (iPhone|iPad|Android|Galaxy|mobile)|\s>\s*On\s/im);
   return (cut >= 0 ? t.slice(0, cut) : t).slice(0, 1500);
 }
 
