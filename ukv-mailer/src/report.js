@@ -22,6 +22,8 @@ import { Router } from "express";
 import { cfg, SITES, nowLocal } from "./config.js";
 import { all, getSetting, setSetting } from "./db.js";
 import { escapeHtml as h } from "./templates.js";
+import { transportFor } from "./mailer.js";
+import { dailyEmailSettings, renderDailyEmail } from "./report-daily.js";
 
 // UKV International logo (white + gold, for the dark banner), embedded so the page needs no static route.
 let LOGO = "";
@@ -519,38 +521,49 @@ export function emailReady() {
   return missing;
 }
 
-export async function sendReportEmail({ dayKey = yesterdayKey(), to = reportCfg.to, cc = reportCfg.cc } = {}) {
-  const missing = emailReady().filter(k => k !== "REPORT_EMAIL_TO");
-  if (missing.length) throw new Error(`Not configured: ${missing.join(", ")}`);
+export async function sendReportEmail({ dayKey = yesterdayKey(), to, cc } = {}) {
+  const s = await dailyEmailSettings();
+  to = to || (s.to.length ? s.to : reportCfg.to);
+  cc = cc || (s.cc.length ? s.cc : reportCfg.cc);
   if (!to.length) throw new Error("No recipients");
-  const { subject, html, text } = await renderEmail(dayKey);
-  const { host, port, user, pass } = reportCfg.smtp;
-  const t = nodemailer.createTransport({ host, port, secure: port === 465, requireTLS: port !== 465, auth: { user, pass }, connectionTimeout: 20000,
-    tls: process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0" ? { rejectUnauthorized: false } : undefined });
-  try { await t.sendMail({ from: reportCfg.from, to, cc: cc.length ? cc : undefined, subject, html, text }); } finally { t.close(); }
+  // Daily client email with opens + brochure follow-up (report-daily.js).
+  const { subject, html, text } = await renderDailyEmail(dayKey);
+  const smtpMissing = emailReady().filter(k => k !== "REPORT_EMAIL_TO");
+  if (!smtpMissing.length) {
+    const { host, port, user, pass } = reportCfg.smtp;
+    const t = nodemailer.createTransport({ host, port, secure: port === 465, requireTLS: port !== 465, auth: { user, pass }, connectionTimeout: 20000,
+      tls: process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0" ? { rejectUnauthorized: false } : undefined });
+    try { await t.sendMail({ from: reportCfg.from, to, cc: cc.length ? cc : undefined, subject, html, text }); } finally { t.close(); }
+  } else {
+    // No dedicated report SMTP: send through one of the mailer's own mailboxes (setting report_email_mailbox).
+    const mailbox = s.mailbox && (await all("SELECT * FROM mailboxes WHERE lower(email)=lower($1)", [s.mailbox]))[0];
+    if (!mailbox) throw new Error(`Not configured: ${smtpMissing.join(", ")} or setting report_email_mailbox`);
+    await transportFor(mailbox).sendMail({ from: { name: "Campaign Report", address: mailbox.email }, to, cc: cc.length ? cc : undefined, subject, html, text });
+  }
   return { subject, to };
 }
 
 /** Every 10 min: once the local time passes REPORT_EMAIL_TIME, send yesterday's report (once per day, only if anything was sent). */
 async function tick() {
-  if (!reportCfg.emailEnabled) { reportState.lastResult = "disabled (REPORT_EMAIL_ENABLED is not true)"; return; }
+  const s = await dailyEmailSettings();
+  if (!reportCfg.emailEnabled && !s.enabled) { reportState.lastResult = "disabled (REPORT_EMAIL_ENABLED / setting report_email_enabled not true)"; return; }
+  if (s.start && todayKey() < s.start) { reportState.lastResult = `waiting: first email on ${s.start}`; return; }
   reportState.lastRun = new Date();
   const { minutes } = nowLocal();
   const [hh, mm] = reportCfg.time.split(":").map(Number);
   if (minutes < hh * 60 + (mm || 0)) return;
   const day = yesterdayKey();
   if ((await getSetting("report_email_last_day", "")) === day) return;
-  const { totalSent } = await renderEmail(day);
+  const { totalSent } = await renderDailyEmail(day);
   if (!totalSent) { await setSetting("report_email_last_day", day); reportState.lastResult = `${day}: nothing sent, no email`; return; }
   await sendReportEmail({ dayKey: day });
   await setSetting("report_email_last_day", day);
-  reportState.lastResult = `${day}: sent to ${reportCfg.to.join(", ")}`;
+  reportState.lastResult = `${day}: sent`;
   console.log(`[report] ${reportState.lastResult}`);
 }
 
 export function startReportEmails() {
-  reportState.lastResult = reportCfg.emailEnabled ? "waiting" : "disabled (REPORT_EMAIL_ENABLED is not true)";
-  if (!reportCfg.emailEnabled) return;
+  reportState.lastResult = "waiting";
   const run = () => tick().catch(e => { reportState.lastResult = `error: ${e.message}`; console.warn("[report]", e.message); });
   setTimeout(run, 90_000);
   setInterval(run, 10 * 60_000);
