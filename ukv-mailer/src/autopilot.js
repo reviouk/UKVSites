@@ -36,6 +36,10 @@ const DEFAULT_CAMPAIGNS = [
 // Providers whose servers pass verification then bounce (17 + 20 Nov 2026). Never uploaded.
 export const RISKY_DOMAIN_SQL = String.raw`split_part(lower(email),'@',2) ~ '^(aol\.|yahoo\.|ymail\.|rocketmail\.|virgin\.net$|bigfoot\.com$|btinternet\.com$|btopenworld\.com$|talk21\.com$)|\.ru$'`;
 
+// Consumer mailbox providers. Company domains bounced 3.7% on 20 Nov (leavers), so Instantly only gets these;
+// company addresses go through the mailer, where a bounce can't trigger Instantly's bounce protection.
+export const CONSUMER_DOMAIN_SQL = String.raw`split_part(lower(email),'@',2) ~ '^((gmail|googlemail)\.|(icloud|me|mac)\.com$|(ntlworld|blueyonder|virginmedia|sky|tiscali|talktalk|orange|wanadoo|freeserve|o2|lineone|supanet|madasafish|fsnet|uwclub|onetel|zen|plus|tesco|globalnet|waitrose|eclipse|f2s|freenet|clara|demon|pipex|dsl|karoo|ukonline|cwcom|blinternet|gmx|aim|mail)\.)'`;
+
 async function api(method, path, body) {
   for (let tries = 0; ; tries++) {
     const r = await fetch(API + path, { method, headers: { Authorization: `Bearer ${KEY()}`, ...(body ? { "Content-Type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
@@ -194,7 +198,7 @@ async function manageMailer(actions, notes, heldDomains) {
   let days = queued / perDay, added = 0;
   if (c.status === "active" && days < MAILER_MIN_DAYS) {
     const want = Math.round(MAILER_TARGET_DAYS * perDay - queued);
-    const rows = await pickFresh("google", want, heldDomains);
+    const rows = await pickFresh("google", want, heldDomains, { consumerOnly: false });
     if (rows.length) {
       const r = await write(() => q(`INSERT INTO enrolments(campaign_id, contact_id, next_due_at) SELECT $1, unnest($2::int[]), now() ON CONFLICT DO NOTHING`, [c.id, rows.map(x => x.id)]));
       added = DRY ? rows.length : r.rowCount;
@@ -206,13 +210,13 @@ async function manageMailer(actions, notes, heldDomains) {
   autopilotState.campaigns = { ...(autopilotState.campaigns || {}), [`mailer-${c.id}`]: { name: c.name, left: queued + added, daysLeft: Number(days.toFixed(1)), daily: perDay } };
 }
 
-async function pickFresh(pool, limit, heldDomains) {
+async function pickFresh(pool, limit, heldDomains, { consumerOnly = pool === "google" } = {}) {
   if (limit <= 0) return [];
   return all(`SELECT id, email, first_name, last_name FROM contacts
     WHERE status='active' AND verify_result='ok' AND NOT instantly_contacted AND instantly_sent_at IS NULL
       AND ${pool === "microsoft" ? "mail_provider='microsoft'" : "coalesce(mail_provider,'other') NOT IN ('microsoft','none')"}
       AND coalesce(data_source,'') NOT ILIKE '%whisky%'   -- 6 Nov: Whisky sheets look like existing UKV leads, kept out
-      AND NOT (${RISKY_DOMAIN_SQL}) AND NOT (split_part(lower(email),'@',2) = ANY($2::text[]))
+      AND NOT (${RISKY_DOMAIN_SQL}) ${pool === "google" && consumerOnly ? `AND ${CONSUMER_DOMAIN_SQL}` : ""} AND NOT (split_part(lower(email),'@',2) = ANY($2::text[]))
       AND NOT EXISTS (SELECT 1 FROM enrolments e WHERE e.contact_id=contacts.id)
       AND NOT EXISTS (SELECT 1 FROM suppressions s WHERE s.email=contacts.email)
     ORDER BY id LIMIT $1`, [limit, heldDomains]);
