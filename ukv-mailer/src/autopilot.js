@@ -11,6 +11,7 @@
  *      (non-Microsoft for the Google pool, Microsoft for the M365 pool), never AOL/Yahoo/Virgin/BT/bigfoot/.ru,
  *      never a held domain, never an old-Instantly-list contact, never anyone the mailer has enrolled.
  *   4. Runway: when a campaign has under RUNWAY_ALERT_DAYS left and no fresh leads remain, Rob is told once a week.
+ *   5. Mailer: the Invest Chronicle queue is kept at 10-14 days of first emails from the same verified pool.
  * Every action is logged to autopilotState (healthz + Rob's internal daily report) and emailed to Rob when it
  * changes something.
  */
@@ -76,7 +77,7 @@ async function tellRob(subject, html) {
 const domainOf = e => String(e).split("@")[1]?.toLowerCase() || "";
 const contacted = l => !!(l.timestamp_last_contact || l.status === 3 || l.status === -1);
 
-async function manageCampaign(c, actions, notes) {
+async function manageCampaign(c, actions, notes, accounts) {
   const camp = await api("GET", `/campaigns/${c.id}`);
   const name = camp.name || c.id;
   const leads = await listLeads(c.id);
@@ -124,7 +125,10 @@ async function manageCampaign(c, actions, notes) {
 
   // 3. Top-up.
   const unsent = leads.filter(l => l.status === 1 && !contacted(l)).length - toMove.length;
-  const daily = Number(camp.daily_limit || 0) || 1;
+  // Real daily capacity: the campaign limit, capped by what its sending accounts can do.
+  const accLimit = (camp.email_list || []).reduce((t, e) => t + Number(accounts[String(e).toLowerCase()]?.daily_limit || 0), 0);
+  const limits = [Number(camp.daily_limit) || 0, accLimit].filter(x => x > 0);
+  const daily = limits.length ? Math.min(...limits) : 1;
   const days = unsent / daily;
   let added = 0;
   if (status === 1 && days < TOPUP_MIN_DAYS) {
@@ -152,6 +156,30 @@ async function manageCampaign(c, actions, notes) {
     await tellRob(`Leads running low: ${name}`, `<p><b>${h(name)}</b> has about <b>${daysLeft.toFixed(1)} days</b> of leads left (${left} unsent at ${daily}/day) and no fresh verified leads remain for it.</p><p>New data is needed: import it, verify it, and the autopilot will load it.</p>`);
     actions.push(`${name}: runway warning sent (${daysLeft.toFixed(1)} days left)`);
   }
+}
+
+// 5. Mailer top-up: keep the Invest Chronicle queue (campaign MAILER_CAMPAIGN) at >= MAILER_MIN_DAYS of first emails.
+const MAILER_CAMPAIGN = () => Number(process.env.AUTOPILOT_MAILER_CAMPAIGN || 2), MAILER_MIN_DAYS = 10, MAILER_TARGET_DAYS = 14;
+async function manageMailer(actions, notes, heldDomains) {
+  const c = (await all("SELECT id, name, status FROM campaigns WHERE id=$1", [MAILER_CAMPAIGN()]))[0];
+  if (!c) return;
+  const queued = Number((await all(`SELECT count(*)::int n FROM enrolments e JOIN contacts ct ON ct.id=e.contact_id
+    WHERE e.campaign_id=$1 AND e.status='active' AND e.current_step=0 AND ct.status='active'`, [c.id]))[0].n);
+  const perDay = Math.max(30, Number((await all(`SELECT round(count(*)/5.0)::int n FROM sends WHERE campaign_id=$1 AND step_position=1
+    AND status<>'failed' AND sent_at > now() - interval '5 days'`, [c.id]))[0].n));
+  let days = queued / perDay, added = 0;
+  if (c.status === "active" && days < MAILER_MIN_DAYS) {
+    const want = Math.round(MAILER_TARGET_DAYS * perDay - queued);
+    const rows = await pickFresh("google", want, heldDomains);
+    if (rows.length) {
+      const r = await write(() => q(`INSERT INTO enrolments(campaign_id, contact_id, next_due_at) SELECT $1, unnest($2::int[]), now() ON CONFLICT DO NOTHING`, [c.id, rows.map(x => x.id)]));
+      added = DRY ? rows.length : r.rowCount;
+      actions.push(`${c.name}: enrolled ${added} verified contact(s) (queue was ${queued}, ${days.toFixed(1)} days)`);
+    }
+  }
+  days = (queued + added) / perDay;
+  notes.push(`${c.name}: ${queued + added} waiting for a first email (~${days.toFixed(1)} days at ${perDay}/day)`);
+  autopilotState.campaigns = { ...(autopilotState.campaigns || {}), [`mailer-${c.id}`]: { name: c.name, left: queued + added, daysLeft: Number(days.toFixed(1)), daily: perDay } };
 }
 
 async function pickFresh(pool, limit, heldDomains) {
@@ -187,10 +215,15 @@ export async function runAutopilot({ dry = false } = {}) {
   autopilotState.lastRun = new Date();
   const campaigns = JSON.parse(await getSetting("autopilot_campaigns", "") || "null") || DEFAULT_CAMPAIGNS;
   const actions = [], notes = [];
+  const accounts = {};
+  try { let after; for (;;) { const j = await api("GET", `/accounts?limit=100${after ? `&starting_after=${after}` : ""}`); for (const a of j.items || []) accounts[a.email.toLowerCase()] = a; if (!j.next_starting_after) break; after = j.next_starting_after; } }
+  catch (e) { console.warn("[autopilot] accounts", e.message); }
   for (const c of campaigns) {
-    try { await manageCampaign(c, actions, notes); }
+    try { await manageCampaign(c, actions, notes, accounts); }
     catch (e) { notes.push(`${c.id.slice(0, 8)}: error ${e.message}`); console.warn("[autopilot]", c.id, e.message); }
   }
+  try { await manageMailer(actions, notes, JSON.parse(await getSetting("autopilot_held_domains", "[]") || "[]")); }
+  catch (e) { notes.push(`mailer: error ${e.message}`); console.warn("[autopilot] mailer", e.message); }
   const stamp = new Date().toISOString().slice(0, 16);
   autopilotState.lastResult = `${stamp}: ${actions.length ? actions.join("; ") : "no action needed"} | ${notes.join("; ")}`;
   autopilotState.log = [...actions.map(a => `${stamp} ${a}`), ...autopilotState.log].slice(0, 50);
