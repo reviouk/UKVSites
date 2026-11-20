@@ -11,6 +11,7 @@
  *      (non-Microsoft for the Google pool, Microsoft for the M365 pool), never AOL/Yahoo/Virgin/BT/bigfoot/.ru,
  *      never a held domain, never an old-Instantly-list contact, never anyone the mailer has enrolled.
  *   4. Runway: when a campaign has under RUNWAY_ALERT_DAYS left and no fresh leads remain, Rob is told once a week.
+ *   6. Warming accounts in setting autopilot_pending_accounts join their campaign once due and healthy.
  *   5. Mailer: the Invest Chronicle queue is kept at 10-14 days of first emails from the same verified pool.
  * Every action is logged to autopilotState (healthz + Rob's internal daily report) and emailed to Rob when it
  * changes something.
@@ -158,6 +159,29 @@ async function manageCampaign(c, actions, notes, accounts) {
   }
 }
 
+// 6. Warming accounts waiting to join a campaign (setting autopilot_pending_accounts: [{email, campaign, after}]).
+//    Added once the date has passed, the account is connected (status 1) and its warm-up health is >= 95.
+async function joinWarmedAccounts(actions, notes, accounts) {
+  const pending = JSON.parse(await getSetting("autopilot_pending_accounts", "[]") || "[]");
+  if (!pending.length) return;
+  const due = pending.filter(p => nowLocal().dateKey >= p.after);
+  const health = due.length ? (await api("POST", "/accounts/warmup-analytics", { emails: due.map(p => p.email) })).aggregate_data || {} : {};
+  const keep = [];
+  for (const p of pending) {
+    const a = accounts[p.email.toLowerCase()], hs = Number(health[p.email]?.health_score || 0);
+    if (nowLocal().dateKey < p.after || !a || Number(a.status) !== 1 || hs < 95) {
+      keep.push(p);
+      if (nowLocal().dateKey >= p.after) notes.push(`${p.email}: waiting to join (status ${a?.status ?? "missing"}, health ${hs})`);
+      continue;
+    }
+    const camp = await api("GET", `/campaigns/${p.campaign}`);
+    const list = [...new Set([...(camp.email_list || []), p.email])];
+    await write(() => api("PATCH", `/campaigns/${p.campaign}`, { email_list: list }));
+    actions.push(`${p.email} (warm-up health ${hs}) added to ${camp.name}`);
+  }
+  if (!DRY && keep.length !== pending.length) await setSetting("autopilot_pending_accounts", JSON.stringify(keep));
+}
+
 // 5. Mailer top-up: keep the Invest Chronicle queue (campaign MAILER_CAMPAIGN) at >= MAILER_MIN_DAYS of first emails.
 const MAILER_CAMPAIGN = () => Number(process.env.AUTOPILOT_MAILER_CAMPAIGN || 2), MAILER_MIN_DAYS = 10, MAILER_TARGET_DAYS = 14;
 async function manageMailer(actions, notes, heldDomains) {
@@ -222,6 +246,8 @@ export async function runAutopilot({ dry = false } = {}) {
     try { await manageCampaign(c, actions, notes, accounts); }
     catch (e) { notes.push(`${c.id.slice(0, 8)}: error ${e.message}`); console.warn("[autopilot]", c.id, e.message); }
   }
+  try { await joinWarmedAccounts(actions, notes, accounts); }
+  catch (e) { notes.push(`join accounts: error ${e.message}`); console.warn("[autopilot] join", e.message); }
   try { await manageMailer(actions, notes, JSON.parse(await getSetting("autopilot_held_domains", "[]") || "[]")); }
   catch (e) { notes.push(`mailer: error ${e.message}`); console.warn("[autopilot] mailer", e.message); }
   const stamp = new Date().toISOString().slice(0, 16);
