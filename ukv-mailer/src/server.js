@@ -11,6 +11,7 @@ import { startConversionSync } from "./conversions.js";
 import { startCallbacks, cbState } from "./callbacks.js";
 import { reportRoutes, startReportEmails, reportState } from "./report.js";
 import { startBounceWatch, bounceWatchState } from "./bounce-watch.js";
+import { startAutopilot, autopilotState } from "./autopilot.js";
 
 const app = express();
 app.set("trust proxy", true);
@@ -26,6 +27,7 @@ app.get("/healthz", (_req, res) => res.json({
   nurtureCompleted: { lists: nurtureState.lists, result: nurtureState.lastResult },
   instantlyReplies: instantlyReplyState.lastResult,
   bounceWatch: bounceWatchState.lastResult,
+  autopilot: autopilotState.lastResult,
 }));
 
 app.use(tracking);
@@ -45,4 +47,5 @@ app.listen(cfg.port, async () => {
   startInstantlyReplySync();
   startCompletionSync();
   startBounceWatch();
+  startAutopilot();
 });

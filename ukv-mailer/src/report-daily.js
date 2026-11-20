@@ -183,6 +183,16 @@ ${internal ? await internalHtml(day, sans) : ""}
   return { subject: internal ? `[Internal] ${subject}` : subject, html, text, totalSent: t.sent };
 }
 
+async function autopilotHtml(sans) {
+  const st = JSON.parse(await getSetting("autopilot_status", "null") || "null");
+  const since = Date.now() - 26 * 3600e3;
+  const log = JSON.parse(await getSetting("autopilot_log", "[]") || "[]").filter(x => Date.parse(x.at + "Z") > since);
+  if (!st && !log.length) return "";
+  return `<h3 style="font:600 16px ${sans};margin:18px 0 6px">Autopilot (checks 07:00, 11:00, 15:00, 19:00)</h3>
+<ul style="font:14px/1.5 ${sans}">${log.length ? log.map(x => `<li>${h(x.at.slice(11))} UTC: ${h(x.a)}</li>`).join("") : "<li>No changes needed in the last day.</li>"}
+${(st?.notes || []).map(t => `<li style="color:#555">${h(t)}</li>`).join("")}</ul>`;
+}
+
 async function internalHtml(day, sans) {
   const [texts, cap] = await Promise.all([replyTexts(day).catch(() => []), capacityToday().catch(() => null)]);
   const li = texts.map(r => `<li><b>${h(r.email)}</b> (${h(BRAND_LABEL[r.site] || r.site)})${isOptOut(r.text, r.subject) ? " – <i>removed</i>" : ""}${/^(automatic reply|auto|out of office)/i.test(r.subject) ? " – <i>auto-reply</i>" : ""}: “${h(r.text.replace(/\s+/g, " ").slice(0, 280))}”</li>`).join("\n");
@@ -192,6 +202,7 @@ async function internalHtml(day, sans) {
 ${li ? `<ul style="font:14px/1.5 ${sans}">${li}</ul>` : `<p style="font:14px ${sans}">No replies.</p>`}
 ${Object.keys(bounceWatchState.campaigns).length ? `<h3 style="font:600 16px ${sans};margin:18px 0 6px">Instantly bounces (last 24h)</h3>
 <ul style="font:14px/1.5 ${sans}">${Object.values(bounceWatchState.campaigns).map(c => `<li>${h(c.name)} – ${h(c.status)}: ${c.bounced24} of ${c.sent24} bounced (${c.rate24}%)${c.rate24 >= 2 ? " ⚠" : ""}; all time ${c.total}%</li>`).join("")}</ul>` : ""}
+${await autopilotHtml(sans)}
 ${cap ? `<h3 style="font:600 16px ${sans};margin:18px 0 6px">Sending limit today</h3>
 <p style="font:14px ${sans}">About <b>${n(cap.total)}</b> emails: mailer ${n(cap.mailer)}, Instantly ${n(cap.instantly)}.</p>` : ""}`;
 }
