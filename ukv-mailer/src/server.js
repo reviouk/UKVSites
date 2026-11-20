@@ -12,6 +12,7 @@ import { startCallbacks, cbState } from "./callbacks.js";
 import { reportRoutes, startReportEmails, reportState } from "./report.js";
 import { startBounceWatch, bounceWatchState } from "./bounce-watch.js";
 import { startAutopilot, autopilotState } from "./autopilot.js";
+import { startHealthWatch, healthWatchState } from "./health-watch.js";
 
 const app = express();
 app.set("trust proxy", true);
@@ -28,6 +29,7 @@ app.get("/healthz", (_req, res) => res.json({
   instantlyReplies: instantlyReplyState.lastResult,
   bounceWatch: bounceWatchState.lastResult,
   autopilot: autopilotState.lastResult,
+  health: healthWatchState.lastResult,
 }));
 
 app.use(tracking);
@@ -48,4 +50,5 @@ app.listen(cfg.port, async () => {
   startCompletionSync();
   startBounceWatch();
   startAutopilot();
+  startHealthWatch();
 });

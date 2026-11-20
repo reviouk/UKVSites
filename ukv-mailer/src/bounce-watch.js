@@ -59,17 +59,17 @@ export async function checkBounces() {
     out.push(`${name}: ${STATUS[cur.status] || cur.status}, 24h ${bounced24}/${sent24} bounced (${rate24.toFixed(1)}%)`);
 
     if (prevStatus === 1 && cur.status !== 1 && await onceToday(`${id}:paused`)) {
-      await alert(`⚠ Instantly campaign stopped: ${name}`, `<p>The Instantly campaign <b>${h(name)}</b> is now <b>${h(STATUS[cur.status] || String(cur.status))}</b> (it was active an hour ago).</p>
+      await alert(`HIGH PRIORITY: Instantly campaign stopped: ${name}`, `<p>The Instantly campaign <b>${h(name)}</b> is now <b>${h(STATUS[cur.status] || String(cur.status))}</b> (it was active an hour ago).</p>
 <p>Bounces in the last 24h: ${bounced24} of ${sent24} sent (${rate24.toFixed(1)}%). All time: ${cur.bounced} of ${cur.sent} (${bounceWatchState.campaigns[id].total}%).</p>`);
     }
     if (sent24 >= 50 && rate24 >= ALERT_PCT() && await onceToday(`${id}:rate`)) {
-      await alert(`⚠ Bounce rate ${rate24.toFixed(1)}% on ${name}`, `<p><b>${h(name)}</b> bounced <b>${bounced24} of ${sent24}</b> emails in the last 24 hours (<b>${rate24.toFixed(1)}%</b>, alert level ${ALERT_PCT()}%).</p>
+      await alert(`HIGH PRIORITY: bounce rate ${rate24.toFixed(1)}% on ${name}`, `<p><b>${h(name)}</b> bounced <b>${bounced24} of ${sent24}</b> emails in the last 24 hours (<b>${rate24.toFixed(1)}%</b>, alert level ${ALERT_PCT()}%).</p>
 <p>Instantly pauses a campaign by itself if this keeps climbing. Check which email domains are bouncing and hold them before it does.</p>`);
     }
     // Instantly paused at ~5% all-time on 16 Nov (46/919); warn well before that.
     const total = bounceWatchState.campaigns[id].total;
     if (cur.status === 1 && cur.sent >= 200 && total >= 4 && await onceToday(`${id}:total`)) {
-      await alert(`⚠ ${name}: all-time bounce rate ${total}%`, `<p><b>${h(name)}</b> has bounced <b>${cur.bounced} of ${cur.sent}</b> emails overall (<b>${total}%</b>). Instantly paused this campaign at about 5% on 16 Nov.</p>`);
+      await alert(`HIGH PRIORITY: ${name} all-time bounce rate ${total}%`, `<p><b>${h(name)}</b> has bounced <b>${cur.bounced} of ${cur.sent}</b> emails overall (<b>${total}%</b>). Instantly paused this campaign at about 5% on 16 Nov.</p>`);
     }
   }
   await setSetting("bounce_watch_snapshots", JSON.stringify(snaps));
