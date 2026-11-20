@@ -11,6 +11,7 @@ import { cfg, SITES } from "./config.js";
 import { all, getSetting } from "./db.js";
 import { escapeHtml as h } from "./templates.js";
 import { isOptOut, replyOnly } from "./optout.js";
+import { bounceWatchState } from "./bounce-watch.js";
 
 const BRANDS = ["investchronicles", "marketwatcher"];
 const BRAND_LABEL = { investchronicles: "The Invest Chronicle", marketwatcher: "Market Watcher" };
@@ -189,6 +190,8 @@ async function internalHtml(day, sans) {
 <p style="font:600 12px ${sans};color:#999;letter-spacing:.08em;text-transform:uppercase">Internal – not in the client email</p>
 <h3 style="font:600 16px ${sans};margin:10px 0 6px">What the replies said</h3>
 ${li ? `<ul style="font:14px/1.5 ${sans}">${li}</ul>` : `<p style="font:14px ${sans}">No replies.</p>`}
+${Object.keys(bounceWatchState.campaigns).length ? `<h3 style="font:600 16px ${sans};margin:18px 0 6px">Instantly bounces (last 24h)</h3>
+<ul style="font:14px/1.5 ${sans}">${Object.values(bounceWatchState.campaigns).map(c => `<li>${h(c.name)} – ${h(c.status)}: ${c.bounced24} of ${c.sent24} bounced (${c.rate24}%)${c.rate24 >= 2 ? " ⚠" : ""}; all time ${c.total}%</li>`).join("")}</ul>` : ""}
 ${cap ? `<h3 style="font:600 16px ${sans};margin:18px 0 6px">Sending limit today</h3>
 <p style="font:14px ${sans}">About <b>${n(cap.total)}</b> emails: mailer ${n(cap.mailer)}, Instantly ${n(cap.instantly)}.</p>` : ""}`;
 }
