@@ -133,7 +133,32 @@ async function manageCampaign(c, actions, notes, accounts) {
   // Real daily capacity: the campaign limit, capped by what its sending accounts can do.
   const accLimit = (camp.email_list || []).reduce((t, e) => t + Number(accounts[String(e).toLowerCase()]?.daily_limit || 0), 0);
   const limits = [Number(camp.daily_limit) || 0, accLimit].filter(x => x > 0);
-  const daily = limits.length ? Math.min(...limits) : 1;
+  let daily = limits.length ? Math.min(...limits) : 1;
+  // Pacing (Rob, 22 Nov 2026: "lower Google volume" so non-Microsoft leads last to autopilot_end_date).
+  // Supply = this campaign's unsent + the mailer's waiting queue + every verified non-Microsoft lead not yet used
+  // (the mailer draws from the same pool). Daily limit = supply / days left - mailer's daily draw, between 100 and
+  // autopilot_google_max, in steps of 10 (only when setting autopilot_pacing = on), changed only when it moves by 20+. Rises again when more leads are verified.
+  if (c.pool === "google" && status === 1 && (await getSetting("autopilot_pacing", "off")) === "on") {
+    const end = await getSetting("autopilot_end_date", "2027-03-01");
+    const daysToEnd = Math.max(1, Math.ceil((Date.parse(end + "T23:59:59Z") - Date.now()) / 864e5));
+    const mailerId = MAILER_CAMPAIGN();
+    const [{ queued }] = await all(`SELECT count(*)::int queued FROM enrolments e JOIN contacts ct ON ct.id=e.contact_id
+      WHERE e.campaign_id=$1 AND e.status='active' AND e.current_step=0 AND ct.status='active'`, [mailerId]);
+    const [{ perday }] = await all(`SELECT round(count(*)/7.0)::int perday FROM sends WHERE campaign_id=$1 AND step_position=1
+      AND status<>'failed' AND sent_at > now() - interval '7 days'`, [mailerId]);
+    const pool = (await pickFresh("google", 1e6, [...held], { consumerOnly: false })).length;
+    const supply = unsent + queued + pool;
+    const max = Number(await getSetting("autopilot_google_max", "300")) || 300;
+    const target = Math.max(100, Math.min(max, Math.floor((supply / daysToEnd - perday) / 10) * 10));
+    const current = Number(camp.daily_limit) || max;
+    if (Math.abs(target - current) >= 20) {
+      await write(() => api("PATCH", `/campaigns/${c.id}`, { daily_limit: target }));
+      camp.daily_limit = target;
+      actions.push(`${name}: daily limit ${current} -> ${target} so leads last to ${end} (${supply} non-Microsoft leads for ${daysToEnd} days; mailer uses ~${perday}/day)`);
+    }
+    notes.push(`${name}: paced at ${target}/day to last to ${end}`);
+    daily = Math.min(daily, target);
+  }
   const days = unsent / daily;
   let added = 0;
   if (status === 1 && days < TOPUP_MIN_DAYS) {
