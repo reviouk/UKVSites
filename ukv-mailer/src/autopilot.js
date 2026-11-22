@@ -188,7 +188,8 @@ async function manageCampaign(c, actions, notes, accounts) {
   }
 }
 
-// 6. Warming accounts waiting to join a campaign (setting autopilot_pending_accounts: [{email, campaign, after}]).
+// 6. Warming accounts waiting to join a campaign and/or step up their daily limit
+//    (setting autopilot_pending_accounts: [{email, campaign?, limit?, after}]).
 //    Added once the date has passed, the account is connected (status 1) and its warm-up health is >= 95.
 async function joinWarmedAccounts(actions, notes, accounts) {
   const pending = JSON.parse(await getSetting("autopilot_pending_accounts", "[]") || "[]");
@@ -200,13 +201,19 @@ async function joinWarmedAccounts(actions, notes, accounts) {
     const a = accounts[p.email.toLowerCase()], hs = Number(health[p.email]?.health_score || 0);
     if (nowLocal().dateKey < p.after || !a || Number(a.status) !== 1 || hs < 95) {
       keep.push(p);
-      if (nowLocal().dateKey >= p.after) notes.push(`${p.email}: waiting to join (status ${a?.status ?? "missing"}, health ${hs})`);
+      if (nowLocal().dateKey >= p.after) notes.push(`${p.email}: waiting (status ${a?.status ?? "missing"}, health ${hs})`);
       continue;
     }
-    const camp = await api("GET", `/campaigns/${p.campaign}`);
-    const list = [...new Set([...(camp.email_list || []), p.email])];
-    await write(() => api("PATCH", `/campaigns/${p.campaign}`, { email_list: list }));
-    actions.push(`${p.email} (warm-up health ${hs}) added to ${camp.name}`);
+    if (p.limit) {   // scheduled daily-limit step-up
+      await write(() => api("PATCH", `/accounts/${encodeURIComponent(p.email)}`, { daily_limit: Number(p.limit) }));
+      actions.push(`${p.email} (warm-up health ${hs}) daily limit ${a.daily_limit} -> ${p.limit}`);
+    }
+    if (p.campaign) {
+      const camp = await api("GET", `/campaigns/${p.campaign}`);
+      const list = [...new Set([...(camp.email_list || []), p.email])];
+      await write(() => api("PATCH", `/campaigns/${p.campaign}`, { email_list: list }));
+      actions.push(`${p.email} (warm-up health ${hs}) added to ${camp.name}`);
+    }
   }
   if (!DRY && keep.length !== pending.length) await setSetting("autopilot_pending_accounts", JSON.stringify(keep));
 }
