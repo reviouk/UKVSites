@@ -68,8 +68,16 @@ async function mailerMailboxes(problems, ok) {
     WHERE m.enabled AND s.status='failed' AND s.sent_at > now() - interval '2 hours' GROUP BY m.email HAVING count(s.id) >= 3`);
   for (const f of failing) problems.push({ key: `mbx:${f.email}:fail`, text: `Mailer mailbox <b>${h(f.email)}</b> failed ${f.fails} sends in the last 2 hours: ${h(String(f.err || "").slice(0, 200))}` });
   const errs = await all(`SELECT email, last_error FROM mailboxes WHERE enabled AND last_error_at > now() - interval '70 minutes'`);
-  for (const e of errs) if (!failing.find(f => f.email === e.email))
-    problems.push({ key: `mbx:${e.email}:err`, text: `Mailer mailbox <b>${h(e.email)}</b> reported an error: ${h(String(e.last_error || "").slice(0, 200))}` });
+  // Reply-inbox (IMAP) errors are often one-off provider hiccups: alert only after 3 hourly checks in a row see one.
+  // Sending errors alert straight away.
+  const streak = JSON.parse(await getSetting("health_imap_streak", "{}") || "{}"), nextStreak = {};
+  for (const e of errs) {
+    if (failing.find(f => f.email === e.email)) continue;
+    const imap = /^IMAP:/i.test(String(e.last_error || ""));
+    if (imap) { nextStreak[e.email] = (streak[e.email] || 0) + 1; if (nextStreak[e.email] < 3) continue; }
+    problems.push({ key: `mbx:${e.email}:err`, text: `Mailer mailbox <b>${h(e.email)}</b> ${imap ? `has failed its reply-inbox check for ${nextStreak[e.email]} hours in a row` : "reported a sending error"}: ${h(String(e.last_error || "").slice(0, 200))}` });
+  }
+  if (!process.env.HEALTH_DRY) await setSetting("health_imap_streak", JSON.stringify(nextStreak));
   // Stalled: nothing sent for 90 minutes inside the window, emails due, AND today is well behind the usual pace
   // for this time of day (so a mailer that has simply hit today's caps is not flagged).
   const now = new Date(), earlier = new Date(now - 90 * 60_000);
