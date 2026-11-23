@@ -50,10 +50,13 @@ async function instantlyDay(day) {
   return out;
 }
 
-async function brochureStages() {
+// HubSpot list labels for the client email's running totals.
+const LIST_LABEL = { 1892: ["Opened", "investchronicles"], 1893: ["Opened", "marketwatcher"], 1900: ["Clicked", "investchronicles"], 1901: ["Clicked", "marketwatcher"] };
+
+async function brochureStages(day) {
   const token = process.env.HUBSPOT_TOKEN;
   if (!token) return null;
-  const joined = new Map();
+  const joined = new Map(), lists = {};
   try {
     for (const id of BROCHURE_LISTS) {
       let after;
@@ -61,7 +64,10 @@ async function brochureStages() {
         const r = await fetch(`https://api.hubapi.com/crm/v3/lists/${id}/memberships/join-order?limit=250${after ? "&after=" + after : ""}`, { headers: { Authorization: `Bearer ${token}` } });
         if (!r.ok) return null;
         const j = await r.json();
+        lists[id] ??= { total: 0, added: 0 };
         for (const m of j.results || []) {
+          lists[id].total++;
+          if (day && new Date(m.membershipTimestamp).toLocaleDateString("en-CA", { timeZone: cfg.tz }) === day) lists[id].added++;
           const t = Math.max(Date.parse(m.membershipTimestamp) || 0, BACKFILL_ENROLLED_AT);
           if (!joined.has(m.recordId) || t < joined.get(m.recordId)) joined.set(m.recordId, t);
         }
@@ -70,7 +76,7 @@ async function brochureStages() {
     }
   } catch { return null; }
   const now = Date.now(), H = 3600e3;
-  const s = { total: joined.size, waiting: 0, brochure: 0, video: 0 };
+  const s = { total: joined.size, waiting: 0, brochure: 0, video: 0, lists };
   for (const t of joined.values()) { const age = now - t; if (age < H) s.waiting++; else if (age < 49 * H) s.brochure++; else s.video++; }
   return s;
 }
@@ -95,7 +101,7 @@ export async function dailyEmailData(day) {
     replies: replies.filter(r => r.site === b).length, unsubs: unsubs[b] || 0, forms: forms[b] || 0,
   }]));
   const total = Object.fromEntries(Object.keys(brands.marketwatcher).map(k => [k, BRANDS.reduce((a, b) => a + brands[b][k], 0)]));
-  return { day, brands, total, replies, stages: await brochureStages() };
+  return { day, brands, total, replies, stages: await brochureStages(day) };
 }
 
 // ---- internal extras (Rob's copy): what each reply said + today's sending limit ----------------
@@ -165,6 +171,12 @@ ${optOuts.length ? `<li>${optOuts.length} asked not to be contacted again and ${
   if (!internal) {
     const li = (label, value) => `<tr><td style="padding:6px 16px 6px 0;font:15px ${sans};color:#555">${label}</td><td style="padding:6px 0;font:600 15px ${sans}">${value}</td></tr>`;
     const brandLine = BRANDS.map(b => { const x = d.brands[b]; return `${h(BRAND_LABEL[b])}: ${n(x.sent)} sent, ${n(x.opened)} opened`; }).join("<br>");
+    const listRows = s?.lists ? BROCHURE_LISTS.filter(id => s.lists[id]).map(id => { const [kind, site] = LIST_LABEL[id]; const x = s.lists[id];
+      return { label: `${kind} – ${BRAND_LABEL[site] || site}`, total: x.total, added: x.added }; }) : [];
+    const listsHtml = listRows.length ? `<p style="font:600 15px ${sans};margin:20px 0 4px">HubSpot lists (running total)</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+${listRows.map(r => li(h(r.label), `${n(r.total)}${r.added ? ` <span style="font-weight:400;color:#2a7a3b">(+${n(r.added)})</span>` : ""}`)).join("\n")}
+</table>` : "";
     const followUp = s ? `<p style="font:15px/1.5 ${sans};margin:18px 0 0">Brochure follow-up: <b>${n(s.brochure + s.video)}</b> people have been sent the brochure so far${s.waiting ? `, and ${n(s.waiting)} more are about to receive it` : ""}.</p>` : "";
     const htmlSimple = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:16px;background:#ffffff;color:#191714"><div style="max-width:560px">
@@ -179,11 +191,13 @@ ${li("Form fills", n(t.forms))}
 ${li("Unsubscribes", n(t.unsubs))}
 </table>
 <p style="font:13px/1.6 ${sans};color:#777;margin:14px 0 0">${brandLine}</p>
+${listsHtml}
 ${followUp}
 </div></body></html>`;
     const textSimple = [`Hi Mike,`, ``, `Here are the email figures for ${nice}:`, ``,
       `Emails sent: ${t.sent}`, `Opened: ${t.opened} (${pct(t.opened, t.sent)})`, `Clicks: ${t.clicks}`, `Replies: ${t.replies}`, `Form fills: ${t.forms}`, `Unsubscribes: ${t.unsubs}`, ``,
       ...BRANDS.map(b => `${BRAND_LABEL[b]}: ${d.brands[b].sent} sent, ${d.brands[b].opened} opened`),
+      ...(listRows.length ? ["", "HubSpot lists (running total):", ...listRows.map(r => `${r.label}: ${r.total}${r.added ? ` (+${r.added})` : ""}`)] : []),
       s ? `\nBrochure follow-up: ${s.brochure + s.video} people have been sent the brochure so far${s.waiting ? `, and ${s.waiting} more are about to receive it` : ""}.` : ""].join("\n");
     return { subject: `Daily email report – ${nice}`, html: htmlSimple, text: textSimple, totalSent: t.sent };
   }
