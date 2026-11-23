@@ -161,6 +161,32 @@ ${optOuts.length ? `<li>${optOuts.length} asked not to be contacted again and ${
 <li><b>${n(s.brochure)}</b> have received the brochure and are due the video email next</li>
 <li><b>${n(s.video)}</b> have received both the brochure and the video</li>
 </ul>`;
+  // Client version (Rob, 23 Nov 2026: "a simple email with basic stats"): headline numbers only, no names, no tables.
+  if (!internal) {
+    const li = (label, value) => `<tr><td style="padding:6px 16px 6px 0;font:15px ${sans};color:#555">${label}</td><td style="padding:6px 0;font:600 15px ${sans}">${value}</td></tr>`;
+    const brandLine = BRANDS.map(b => { const x = d.brands[b]; return `${h(BRAND_LABEL[b])}: ${n(x.sent)} sent, ${n(x.opened)} opened`; }).join("<br>");
+    const followUp = s ? `<p style="font:15px/1.5 ${sans};margin:18px 0 0">Brochure follow-up: <b>${n(s.brochure + s.video)}</b> people have been sent the brochure so far${s.waiting ? `, and ${n(s.waiting)} more are about to receive it` : ""}.</p>` : "";
+    const htmlSimple = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:16px;background:#ffffff;color:#191714"><div style="max-width:560px">
+<p style="font:15px/1.5 ${sans};margin:0 0 14px">Hi Mike,</p>
+<p style="font:15px/1.5 ${sans};margin:0 0 10px">Here are the email figures for ${h(nice)}:</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+${li("Emails sent", n(t.sent))}
+${li("Opened", `${n(t.opened)} (${pct(t.opened, t.sent)})`)}
+${li("Clicks", n(t.clicks))}
+${li("Replies", n(t.replies))}
+${li("Form fills", n(t.forms))}
+${li("Unsubscribes", n(t.unsubs))}
+</table>
+<p style="font:13px/1.6 ${sans};color:#777;margin:14px 0 0">${brandLine}</p>
+${followUp}
+</div></body></html>`;
+    const textSimple = [`Hi Mike,`, ``, `Here are the email figures for ${nice}:`, ``,
+      `Emails sent: ${t.sent}`, `Opened: ${t.opened} (${pct(t.opened, t.sent)})`, `Clicks: ${t.clicks}`, `Replies: ${t.replies}`, `Form fills: ${t.forms}`, `Unsubscribes: ${t.unsubs}`, ``,
+      ...BRANDS.map(b => `${BRAND_LABEL[b]}: ${d.brands[b].sent} sent, ${d.brands[b].opened} opened`),
+      s ? `\nBrochure follow-up: ${s.brochure + s.video} people have been sent the brochure so far${s.waiting ? `, and ${s.waiting} more are about to receive it` : ""}.` : ""].join("\n");
+    return { subject: `Daily email report – ${nice}`, html: htmlSimple, text: textSimple, totalSent: t.sent };
+  }
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:16px;background:#ffffff;color:#191714">
 <div style="max-width:680px">
