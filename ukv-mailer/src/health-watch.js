@@ -25,13 +25,13 @@ async function api(method, path, body) {
   return r.json();
 }
 
-export async function sendAlert(subject, html) {
+export async function sendAlert(subject, html, fromName = "Campaign Alert") {
   if (process.env.HEALTH_DRY) return console.log("[health-watch dry] would email:", subject, html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " "));
   const to = (await getSetting("report_internal_to", "")).split(",").map(s => s.trim()).filter(Boolean);
   const mbEmail = await getSetting("report_email_mailbox", "");
   const mailbox = mbEmail && (await all("SELECT * FROM mailboxes WHERE lower(email)=lower($1)", [mbEmail]))[0];
   if (!to.length || !mailbox) return console.warn("[health-watch] alert not sent (no report_internal_to / report_email_mailbox):", subject);
-  await transportFor(mailbox).sendMail({ from: { name: "Campaign Alert", address: mailbox.email }, to, subject, html });
+  await transportFor(mailbox).sendMail({ from: { name: fromName, address: mailbox.email }, to, subject, html });
   console.log("[health-watch] alert sent:", subject);
 }
 
@@ -98,11 +98,23 @@ async function mailerMailboxes(problems, ok) {
   ok.push(`mailer: ${failing.length} failing mailbox(es)`);
 }
 
+// One-off reminders for Rob (setting "reminders": JSON [{at: ISO time, subject, html}]). Each is emailed on the first
+// hourly check after its time, then removed.
+async function dueReminders(ok) {
+  const list = JSON.parse(await getSetting("reminders", "[]") || "[]");
+  const due = list.filter(r => new Date(r.at) <= new Date());
+  if (!due.length) return ok.push(`reminders: ${list.length} waiting`);
+  for (const r of due) await sendAlert(r.subject, r.html, "Reminder");
+  if (!process.env.HEALTH_DRY) await setSetting("reminders", JSON.stringify(list.filter(r => !due.includes(r))));
+  ok.push(`reminders: sent ${due.length}`);
+}
+
 export async function checkHealth() {
   healthWatchState.lastRun = new Date();
   const problems = [], ok = [];
   if (KEY()) await instantlyAccounts(problems, ok).catch(e => ok.push(`Instantly check error: ${e.message}`));
   await mailerMailboxes(problems, ok).catch(e => ok.push(`mailer check error: ${e.message}`));
+  await dueReminders(ok).catch(e => ok.push(`reminder error: ${e.message}`));
   if (/error/i.test(autopilotState.lastResult || "")) problems.push({ key: "autopilot:error", text: `The campaign autopilot reported an error: ${h(autopilotState.lastResult.slice(0, 300))}` });
   const fresh = [];
   for (const p of problems) if (await onceToday(p.key)) fresh.push(p);
