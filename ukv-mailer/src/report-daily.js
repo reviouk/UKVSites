@@ -143,10 +143,30 @@ async function capacityToday() {
   return { mailer, instantly, total: mailer + instantly };
 }
 
+/** Several days in one report (e.g. a weekend catch-up): counts are summed, HubSpot list totals are current. */
+async function multiDayData(days) {
+  const all_ = [];
+  for (const x of days) all_.push(await dailyEmailData(x));
+  const sum = (a, b) => { const o = { ...a }; for (const k of Object.keys(b)) if (typeof b[k] === "number") o[k] = (o[k] || 0) + b[k]; return o; };
+  const out = { ...all_[all_.length - 1] };
+  out.total = all_.reduce((acc, d) => sum(acc, d.total), {});
+  out.brands = Object.fromEntries(BRANDS.map(b => [b, all_.reduce((acc, d) => sum(acc, d.brands[b] || {}), {})]));
+  out.replies = all_.flatMap(d => d.replies);
+  if (out.stages?.lists) {
+    out.stages = { ...out.stages, lists: Object.fromEntries(Object.entries(out.stages.lists).map(([id, l]) =>
+      [id, { ...l, added: all_.reduce((a, d) => a + (d.stages?.lists?.[id]?.added || 0), 0) }])) };
+  }
+  return out;
+}
+
 export async function renderDailyEmail(day, { internal = false } = {}) {
-  const d = await dailyEmailData(day);
+  const days = Array.isArray(day) ? day : [day];
+  const d = days.length > 1 ? await multiDayData(days) : await dailyEmailData(days[0]);
   const t = d.total;
-  const nice = new Date(`${day}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+  const fmt = (x, o) => new Date(`${x}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", ...o });
+  const nice = days.length > 1
+    ? `${days.slice(0, -1).map(x => fmt(x, { weekday: "long", day: "numeric" })).join(", ")} and ${fmt(days[days.length - 1], { weekday: "long", day: "numeric", month: "long" })}`
+    : fmt(days[0], { weekday: "long", day: "numeric", month: "long" });
   const subject = `Email campaign report – ${nice}: ${n(t.sent)} sent, ${n(t.opened)} opened, ${n(t.replies)} ${t.replies === 1 ? "reply" : "replies"}`;
   const sans = "Helvetica,Arial,sans-serif";
   const td = (x, bold) => `<td align="right" style="padding:8px 6px;border-bottom:1px solid #eee;font:${bold ? "700 " : ""}14px ${sans}">${x}</td>`;

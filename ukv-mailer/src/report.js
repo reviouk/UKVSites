@@ -557,6 +557,15 @@ async function tick() {
     { name: "client", on: (reportCfg.emailEnabled || s.enabled) && !(s.start && todayKey() < s.start), wait: s.start, key: "report_email_last_day", internal: false },
     { name: "internal", on: s.internalTo.length > 0, key: "report_internal_last_day", internal: true },
   ];
+  // One-off send (setting report_send_once = JSON array of days, e.g. a weekend catch-up): client email to the
+  // normal recipients, then the setting is cleared so it never repeats.
+  const once = String(await getSetting("report_send_once", "") || "").trim();
+  if (once) {
+    await setSetting("report_send_once", "");
+    try { const days = JSON.parse(once); const r = await sendReportEmail({ dayKey: Array.isArray(days) && days.length ? days : yesterdayKey() });
+      status.push(`one-off: sent "${r.subject}"`); console.log("[report] one-off sent", r.subject); }
+    catch (e) { status.push(`one-off: error ${e.message}`); console.warn("[report] one-off", e.message); }
+  }
   for (const j of jobs) {
     if (!j.on) { status.push(`${j.name}: ${j.wait && todayKey() < j.wait ? `waiting for ${j.wait}` : "off"}`); continue; }
     if (!due || (await getSetting(j.key, "")) === day) { status.push(`${j.name}: ${(await getSetting(j.key, "")) || "not yet sent"}`); continue; }
