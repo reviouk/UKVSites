@@ -24,6 +24,7 @@ import { all, getSetting, setSetting } from "./db.js";
 import { escapeHtml as h } from "./templates.js";
 import { transportFor } from "./mailer.js";
 import { dailyEmailSettings, renderDailyEmail } from "./report-daily.js";
+import { weeklyTick } from "./report-weekly.js";
 
 // UKV International logo (white + gold, for the dark banner), embedded so the page needs no static route.
 let LOGO = "";
@@ -566,6 +567,8 @@ async function tick() {
       status.push(`one-off: sent "${r.subject}"`); console.log("[report] one-off sent", r.subject); }
     catch (e) { status.push(`one-off: error ${e.message}`); console.warn("[report] one-off", e.message); }
   }
+  // Weekly opens & clicks spreadsheet (Tuesday mornings), report-weekly.js.
+  try { status.push(await weeklyTick()); } catch (e) { status.push(`weekly sheet: error ${e.message}`); console.warn("[report] weekly", e.message); }
   for (const j of jobs) {
     if (!j.on) { status.push(`${j.name}: ${j.wait && todayKey() < j.wait ? `waiting for ${j.wait}` : "off"}`); continue; }
     if (!due || (await getSetting(j.key, "")) === day) { status.push(`${j.name}: ${(await getSetting(j.key, "")) || "not yet sent"}`); continue; }

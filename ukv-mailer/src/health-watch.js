@@ -12,6 +12,7 @@ import { cfg, inSendWindow, nowLocal } from "./config.js";
 import { transportFor } from "./mailer.js";
 import { escapeHtml as h } from "./templates.js";
 import { autopilotState } from "./autopilot.js";
+import { reportState } from "./report.js";
 
 export const healthWatchState = { lastRun: null, lastResult: "" };
 const API = "https://api.instantly.ai/api/v2";
@@ -115,6 +116,8 @@ export async function checkHealth() {
   if (KEY()) await instantlyAccounts(problems, ok).catch(e => ok.push(`Instantly check error: ${e.message}`));
   await mailerMailboxes(problems, ok).catch(e => ok.push(`mailer check error: ${e.message}`));
   await dueReminders(ok).catch(e => ok.push(`reminder error: ${e.message}`));
+  const weekly = (reportState.lastResult || "").match(/weekly sheet: error[^;]*/);
+  if (weekly) problems.push({ key: "report:weekly", text: `Mike's weekly opens &amp; clicks spreadsheet failed: ${h(weekly[0].slice(0, 300))}` });
   if (/error/i.test(autopilotState.lastResult || "")) problems.push({ key: "autopilot:error", text: `The campaign autopilot reported an error: ${h(autopilotState.lastResult.slice(0, 300))}` });
   const fresh = [];
   for (const p of problems) if (await onceToday(p.key)) fresh.push(p);
