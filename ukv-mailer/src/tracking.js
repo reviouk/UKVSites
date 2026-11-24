@@ -56,7 +56,7 @@ async function settleClick(s, eventId) {
 
 tracking.get("/c/:token", async (req, res) => {
   const url = String(req.query.u || "");
-  const safe = /^https?:///i.test(url) ? url : (SITES.marketwatcher.url);
+  const safe = /^https?:\/\//i.test(url) ? url : (SITES.marketwatcher.url);
   res.redirect(302, safe);
   try {
     const s = await lookup(req.params.token);
